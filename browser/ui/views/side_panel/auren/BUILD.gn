@@ -1,0 +1,29 @@
+# Copyright (c) 2026 The Brave Authors. All rights reserved.
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this file,
+# You can obtain one at https://mozilla.org/MPL/2.0/.
+
+import("//build/config/ui.gni")
+
+assert(toolkit_views)
+
+source_set("auren") {
+  sources = [
+    "auren_side_panel_web_view.cc",
+    "auren_side_panel_web_view.h",
+  ]
+
+  public_deps = [
+    "//ui/views",
+  ]
+
+  deps = [
+    "//brave/browser/brave_shields",
+    "//brave/components/brave_shields/core/browser",
+    "//chrome/browser/profiles",
+    "//content/public/browser",
+    "//ui/base",
+    "//ui/gfx/geometry",
+    "//url",
+  ]
+}
