@@ -1,6 +1,6 @@
 # Auren
 
-A private, AI-native browser built from source. Chromium/Brave fork with Claude.ai as a permanent native side panel and an MCP server giving Claude direct DOM and accessibility tree access to everything the browser sees.
+A private, AI-native browser built from source. Chromium/Brave fork with Claude.ai (or configurable ai website provider) as a permanent native side panel and an MCP server giving Claude direct DOM and accessibility tree access to everything the browser sees.
 
 ## What's in this repo
 
@@ -22,7 +22,7 @@ mcp/                              ← Auren MCP server (Node.js, CDP-driven brow
   package.json
 ```
 
-The full Chromium/Brave source (~28GB) is not in this repo. Auren is built locally from source. You compile it yourself — that is intentional.
+The full Chromium/Brave source (~28GB) is not in this repo. Auren is built locally from source. You compile it yourself and own the code.
 
 ## Architecture
 
@@ -36,8 +36,8 @@ Claude.ai (side panel)
 
 ## Design
 
-`#0e0e0e` black. `#c9a84c` gold. No gradients. No noise. Every element earns its place.
+Minimal and simplistic, no bloat.
 
 ## Status
 
-Active development. Not ready for public use. Build instructions coming.
+Active development. Not ready for public use. Build instructions and future developments coming.
