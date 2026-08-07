@@ -1,0 +1,30 @@
+# Copyright (c) 2026 The Brave Authors. All rights reserved.
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this file,
+# You can obtain one at https://mozilla.org/MPL/2.0/.
+
+import("//mojo/public/tools/bindings/mojom.gni")
+
+mojom("mojom") {
+  sources = [ "auren_security_handler.mojom" ]
+}
+
+source_set("auren_security_handler") {
+  sources = [
+    "auren_security_handler.cc",
+    "auren_security_handler.h",
+  ]
+
+  deps = [
+    ":mojom",
+    "//base",
+    "//brave/components/brave_shields/core/browser",
+    "//brave/components/brave_shields/core/common",
+    "//chrome/browser/content_settings:content_settings_factory",
+    "//chrome/browser/profiles:profile",
+    "//components/content_settings/core/browser",
+    "//content/public/browser",
+    "//mojo/public/cpp/bindings",
+    "//url",
+  ]
+}
