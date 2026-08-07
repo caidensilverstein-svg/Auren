@@ -1,0 +1,22 @@
+// Copyright (c) 2026 The Brave Authors. All rights reserved.
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this file,
+// You can obtain one at https://mozilla.org/MPL/2.0/.
+
+module auren.mojom;
+
+struct SecurityState {
+  bool js_enabled;
+  bool https_enforced;
+  bool cookies_isolated;
+  int32 fingerprint_score;
+  bool tor_active;
+  string tor_exit_country;
+  bool dns_active;
+};
+
+interface AurenSecurityHandler {
+  GetSecurityState() => (SecurityState state);
+  SetJavaScriptEnabled(bool enabled);
+  SetHttpsOnlyMode(bool enabled);
+};
