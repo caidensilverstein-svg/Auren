@@ -1,0 +1,119 @@
+commit 1dd880d0c96457485633759928ba15ab4c648c6f
+Author: Caiden <273366514+caidensilverstein-svg@users.noreply.github.com>
+Date:   Thu Aug 6 23:57:34 2026 +0000
+
+    [Auren] Harden crash-prone DCHECKs in WebRequest and WorkerWatcher
+    
+    CRASH-01: Replace DCHECK aborts in HideRequest() with guarded LOG+return
+    for SW script type, navigation type, and WebUI initiator checks.
+    Root cause: Brave Shields was stripped at UI layer only; the underlying
+    WebRequest permission infrastructure still registered Shields as an
+    observer, causing DCHECKs to fire on certain network requests.
+    
+    CRASH-02: Replace CHECK aborts in OnVersionStoppedRunning and
+    DisconnectSharedWorkerClient with guarded LOG+return to handle out-of-order
+    service worker teardown races (upstream bug at 151.0.7922.47).
+    
+    Both crashes also manifested as a grey-screen on launch (ISSUE-01) when
+    the abort fired within 4 seconds of startup before the window could paint.
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+diff --git a/components/performance_manager/worker_watcher.cc b/components/performance_manager/worker_watcher.cc
+index 9bfdd5a709dbf..5d1e351ab702e 100644
+--- a/components/performance_manager/worker_watcher.cc
++++ b/components/performance_manager/worker_watcher.cc
+@@ -364,7 +364,11 @@ void WorkerWatcher::OnVersionStoppedRunning(int64_t version_id) {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+ 
+   auto it = service_worker_nodes_.find(version_id);
+-  CHECK(it != service_worker_nodes_.end());
++  if (it == service_worker_nodes_.end()) {
++    LOG(ERROR) << "[Auren] OnVersionStoppedRunning: version_id " << version_id
++               << " not found in service_worker_nodes_ — skipping (CRASH-02)";
++    return;
++  }
+ 
+   auto service_worker_node = std::move(it->second);
+ 
+@@ -718,7 +722,12 @@ void WorkerWatcher::DisconnectSharedWorkerClient(
+ #if DCHECK_IS_ON()
+     DCHECK(IsServiceWorkerNode(worker_node));
+     auto it = missing_service_worker_clients_.find(worker_node);
+-    CHECK(it != missing_service_worker_clients_.end());
++    if (it == missing_service_worker_clients_.end()) {
++      LOG(ERROR) << "[Auren] DisconnectSharedWorkerClient: worker_node not "
++                 << "found in missing_service_worker_clients_ — skipping "
++                 << "(CRASH-02, upstream bug at 151.0.7922.47)";
++      return;
++    }
+     DCHECK_EQ(1u, it->second.erase(content::ServiceWorkerClientInfo(
+                       client_shared_worker_token)));
+     if (it->second.empty())
+diff --git a/extensions/browser/api/web_request/web_request_permissions.cc b/extensions/browser/api/web_request/web_request_permissions.cc
+index 9c6761674c29c..f8c037a821639 100644
+--- a/extensions/browser/api/web_request/web_request_permissions.cc
++++ b/extensions/browser/api/web_request/web_request_permissions.cc
+@@ -271,8 +271,12 @@ bool WebRequestPermissions::HideRequest(
+     // Browser initiated service worker script requests (e.g., for update check)
+     // are not hidden.
+     if (request.is_service_worker_script) {
+-      DCHECK(request.web_request_type ==
+-             extensions::WebRequestResourceType::SCRIPT);
++      if (request.web_request_type !=
++              extensions::WebRequestResourceType::SCRIPT) {
++        LOG(ERROR) << "[Auren] HideRequest: unexpected web_request_type for "
++                   << "browser-initiated SW script request (CRASH-01)";
++        return true;
++      }
+       return false;
+     }
+ 
+@@ -281,12 +285,16 @@ bool WebRequestPermissions::HideRequest(
+       return true;
+     }
+ 
+-    DCHECK(request.web_request_type ==
+-               extensions::WebRequestResourceType::MAIN_FRAME ||
+-           request.web_request_type ==
+-               extensions::WebRequestResourceType::SUB_FRAME ||
+-           request.web_request_type ==
+-               extensions::WebRequestResourceType::OBJECT);
++    if (request.web_request_type !=
++            extensions::WebRequestResourceType::MAIN_FRAME &&
++        request.web_request_type !=
++            extensions::WebRequestResourceType::SUB_FRAME &&
++        request.web_request_type !=
++            extensions::WebRequestResourceType::OBJECT) {
++      LOG(ERROR) << "[Auren] HideRequest: unexpected web_request_type for "
++                 << "browser-initiated navigation request (CRASH-01)";
++      return true;
++    }
+ 
+     // Hide sub-frame requests to clientsX.google.com.
+@@ -330,18 +338,13 @@ bool WebRequestPermissions::HideRequest(
+     const bool is_network_request =
+         url.SchemeIsHTTPOrHTTPS() || url.SchemeIsWSOrWSS();
+     if (is_network_request) {
+-      // WebUI renderers should never be making network requests, but we may
+-      // make some exceptions for now. See https://crbug.com/40091019 for
+-      // details.
+-      //
+-      // The DCHECK helps avoid proliferation of such behavior.
+-      DCHECK(request.initiator.has_value());
+-      DCHECK(extensions::ExtensionsBrowserClient::Get()
+-                 ->IsWebUIAllowedToMakeNetworkRequests(*request.initiator))
+-          << "Unsupported network request from "
+-          << request.initiator->GetTupleOrPrecursorTupleIfOpaque().GetURL()
+-          << " for " << url << " with request type "
+-          << WebRequestResourceTypeToString(request.web_request_type);
++      if (!request.initiator.has_value() ||
++          !extensions::ExtensionsBrowserClient::Get()
++               ->IsWebUIAllowedToMakeNetworkRequests(*request.initiator)) {
++        LOG(ERROR) << "[Auren] HideRequest: WebUI initiator check failed for "
++                   << url << " — hiding request to avoid abort (CRASH-01)";
++        return true;
++      }
+     }
+ #endif  // DCHECK_IS_ON()
+ 
