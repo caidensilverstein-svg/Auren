@@ -1,6 +1,6 @@
 # Auren
 
-A private, AI-native browser built from source. Chromium/Brave fork with Claude.ai (or configurable ai website provider) as a permanent native side panel and an MCP server giving Claude direct DOM and accessibility tree access to everything the browser sees.
+A private, AI-native browser built from source. Chromium/Brave fork with your AI provider as a permanent native side panel and an MCP server giving Claude direct DOM and accessibility tree access to everything the browser sees.
 
 ## What's in this repo
 
