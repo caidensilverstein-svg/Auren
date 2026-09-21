@@ -35,8 +35,25 @@ function getTabState(tabId) {
 }
 
 // --- CDP helpers ---
+// A dead/unreachable host makes the TCP connect itself hang for many
+// seconds (well past the intended backoff budget), so each attempt gets
+// its own hard cap - otherwise 4 attempts against an unreachable host can
+// take 30s+ instead of the ~7.5s the retry message promises.
+const CONNECT_ATTEMPT_TIMEOUT_MS = 1500;
+
+function withTimeout(promise, ms, label) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      v => { clearTimeout(timer); resolve(v); },
+      e => { clearTimeout(timer); reject(e); }
+    );
+  });
+}
+
 async function getTarget(tabId) {
-  const targets = await CDP.List(MAC_CDP);
+  const targets = await withTimeout(CDP.List(MAC_CDP), CONNECT_ATTEMPT_TIMEOUT_MS, 'CDP.List');
   const pages = targets.filter(t => t.type === 'page');
   if (tabId) return pages.find(t => t.id === tabId) || pages[0];
   return pages[0];
@@ -52,16 +69,22 @@ async function connectCDP(tabId) {
     try {
       const target = await getTarget(tabId);
       if (!target) throw new Error('No open page found in Auren');
-      const client = await CDP({ ...MAC_CDP, target: target.id });
+      const client = await withTimeout(
+        CDP({ ...MAC_CDP, target: target.id }), CONNECT_ATTEMPT_TIMEOUT_MS, 'CDP connect');
       return { client, target };
     } catch (e) {
       lastErr = e;
       if (i < delays.length) await new Promise(r => setTimeout(r, delays[i]));
     }
   }
-  const totalSeconds = delays.reduce((a, b) => a + b, 0) / 1000;
+  // Worst-case bound: backoff delays plus one connect-attempt timeout per
+  // try (delays.length + 1 attempts total). Reflects the real cap, not
+  // just the backoff sum, since each attempt can itself stall.
+  const backoffSeconds = delays.reduce((a, b) => a + b, 0) / 1000;
+  const maxSeconds =
+      backoffSeconds + (delays.length + 1) * (CONNECT_ATTEMPT_TIMEOUT_MS / 1000);
   throw new Error(
-    `Auren is offline — retried ${delays.length} times over ${totalSeconds}s: ${lastErr.message}`
+    `Auren is offline — retried ${delays.length} times over ~${maxSeconds}s: ${lastErr.message}`
   );
 }
 
