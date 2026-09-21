@@ -403,6 +403,66 @@ function buildServer() {
     }
   });
 
+  server.registerTool('browser_act', {
+    description: 'Find an element by natural language description and act on it in one step. action: "click", "fill", "read". For fill, provide value. Eliminates the snapshot→find→act round trip.',
+    inputSchema: {
+      find: z.string(),
+      action: z.enum(['click', 'fill', 'read']),
+      value: z.string().optional(),
+      tab_id: z.string().optional(),
+    }
+  }, async ({ find, action, value, tab_id }) => {
+    try {
+      return await withCDP(tab_id, async (client, target) => {
+        const startN = eidCounter;
+        const findResult = await client.Runtime.evaluate({
+          expression: `(function(){
+            let n=${startN};
+            const q=${JSON.stringify(find)};
+            const isSel=/^[.#[*]/.test(q)||q.includes('>')||/\\s[.#[]/.test(q);
+            function kind(el){const t=el.tagName.toLowerCase(),r=(el.getAttribute('role')||'').toLowerCase(),ty=(el.type||'').toLowerCase();if(t==='button'||r==='button'||ty==='button')return'btn';if((t==='a'&&el.href)||r==='link')return'lnk';if(t==='input'||t==='textarea'||r==='textbox')return'inp';if(t==='select'||r==='combobox')return'sel';return'elt';}
+            let results=[];
+            if(isSel){try{results=[...document.querySelectorAll(q)].slice(0,1);}catch(_){}}
+            if(!results.length){const all=[...document.querySelectorAll('a,button,input,select,textarea,[role]')];results=all.filter(el=>(el.textContent||el.value||el.getAttribute('aria-label')||el.getAttribute('placeholder')||'').trim().toLowerCase().includes(q.toLowerCase())).slice(0,1);}
+            if(!results.length)return JSON.stringify({error:'not found'});
+            const el=results[0];const k=kind(el);const eid=k+'-'+(++n);el.setAttribute('data-eid',eid);
+            return JSON.stringify({eid,kind:k,text:(el.textContent||el.value||el.getAttribute('aria-label')||'').trim().slice(0,80),nextN:n});
+          })()`,
+          returnByValue: true
+        });
+        const found = JSON.parse(findResult?.result?.value || '{}');
+        if (found.error) return { content: [{ type: 'text', text: `<e>browser_act: element not found: ${escapeXml(find)}</e>` }] };
+        if (typeof found.nextN === 'number') eidCounter = found.nextN;
+
+        const resolved = `[data-eid="${found.eid}"]`;
+        if (action === 'read') {
+          const r = await client.Runtime.evaluate({ expression: `(function(){const el=document.querySelector(${JSON.stringify(resolved)});return el?(el.innerText||el.textContent||el.value||'').trim().slice(0,2000):'[not found]';})()`, returnByValue: true });
+          return { content: [{ type: 'text', text: r?.result?.value ?? '[no content]' }] };
+        }
+        if (action === 'fill') {
+          if (value === undefined) return { content: [{ type: 'text', text: '<e>browser_act fill requires value</e>' }] };
+          await client.Runtime.evaluate({ expression: `(function(){const el=document.querySelector(${JSON.stringify(resolved)});if(!el)return;el.focus();const d=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value');if(d&&d.set)d.set.call(el,${JSON.stringify(value)});else el.value=${JSON.stringify(value)};el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));})()`, returnByValue: true });
+          await new Promise(r => setTimeout(r, 150));
+          const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: true });
+          return { content: [{ type: 'text', text: xml }] };
+        }
+        if (action === 'click') {
+          const state = getTabState(target.id);
+          const prevUrl = state.url;
+          await client.Runtime.evaluate({ expression: `(function(){const el=document.querySelector(${JSON.stringify(resolved)});if(el)el.click();})()` });
+          await new Promise(r => setTimeout(r, 350));
+          const urlCheck = await client.Runtime.evaluate({ expression: 'location.href', returnByValue: true });
+          const didNavigate = (urlCheck?.result?.value || '') !== prevUrl;
+          if (didNavigate) { await client.Page.loadEventFired().catch(() => {}); await new Promise(r => setTimeout(r, 300)); }
+          const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: !didNavigate });
+          return { content: [{ type: 'text', text: xml }] };
+        }
+      });
+    } catch (e) {
+      return { content: [{ type: 'text', text: `<error tool="browser_act">${escapeXml(e.message)}</error>` }] };
+    }
+  });
+
   server.registerTool('browser_find', {
     description: 'Find elements matching a text query, CSS selector, or ARIA label. Returns up to 5 matches with eids. Use when you need to locate an element without a full page snapshot.',
     inputSchema: { query: z.string(), tab_id: z.string().optional() }
