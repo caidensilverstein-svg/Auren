@@ -454,7 +454,7 @@ function buildServer() {
           returnByValue: true
         });
         const found = JSON.parse(findResult?.result?.value || '{}');
-        if (found.error) return { content: [{ type: 'text', text: `<e>browser_act: element not found: ${escapeXml(find)}</e>` }] };
+        if (found.error) return { content: [{ type: 'text', text: `<error>browser_act: element not found: ${escapeXml(find)}</error>` }] };
         if (typeof found.nextN === 'number') eidCounter = found.nextN;
 
         const resolved = `[data-eid="${found.eid}"]`;
@@ -463,7 +463,7 @@ function buildServer() {
           return { content: [{ type: 'text', text: r?.result?.value ?? '[no content]' }] };
         }
         if (action === 'fill') {
-          if (value === undefined) return { content: [{ type: 'text', text: '<e>browser_act fill requires value</e>' }] };
+          if (value === undefined) return { content: [{ type: 'text', text: '<error>browser_act fill requires value</error>' }] };
           await client.Runtime.evaluate({ expression: `(function(){const el=document.querySelector(${JSON.stringify(resolved)});if(!el)return;el.focus();const d=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value');if(d&&d.set)d.set.call(el,${JSON.stringify(value)});else el.value=${JSON.stringify(value)};el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));})()`, returnByValue: true });
           await new Promise(r => setTimeout(r, 150));
           const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: true });
