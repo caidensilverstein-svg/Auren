@@ -42,15 +42,31 @@ async function getTarget(tabId) {
   return pages[0];
 }
 
-async function withCDP(tabId, fn) {
-  let target;
-  try {
-    target = await getTarget(tabId);
-  } catch (e) {
-    throw new Error(`Auren is offline: ${e.message}`);
+// Retries only cover establishing the CDP connection (List + connect).
+// Once connected, errors from fn() (element not found, bad selector, etc.)
+// propagate immediately — they are application errors, not offline signals.
+async function connectCDP(tabId) {
+  const delays = [500, 1000, 2000, 4000];
+  let lastErr;
+  for (let i = 0; i <= delays.length; i++) {
+    try {
+      const target = await getTarget(tabId);
+      if (!target) throw new Error('No open page found in Auren');
+      const client = await CDP({ ...MAC_CDP, target: target.id });
+      return { client, target };
+    } catch (e) {
+      lastErr = e;
+      if (i < delays.length) await new Promise(r => setTimeout(r, delays[i]));
+    }
   }
-  if (!target) throw new Error('No open page found in Auren');
-  const client = await CDP({ ...MAC_CDP, target: target.id });
+  const totalSeconds = delays.reduce((a, b) => a + b, 0) / 1000;
+  throw new Error(
+    `Auren is offline — retried ${delays.length} times over ${totalSeconds}s: ${lastErr.message}`
+  );
+}
+
+async function withCDP(tabId, fn) {
+  const { client, target } = await connectCDP(tabId);
   try {
     await client.Page.enable();
     await client.Runtime.enable();
