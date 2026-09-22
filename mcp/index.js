@@ -23,6 +23,39 @@ const PORT = 3012;
 const KEY = process.env.AUREN_MCP_KEY;
 const MAC_CDP = { host: '10.8.0.3', port: 9223 };
 
+// --- Negotiated AI permissions (#10) ---
+const PERMS_PATH = path.join(os.homedir(), '.auren', 'agent_permissions.json');
+const DEFAULT_PERMS = {
+  version: 1,
+  trust_level: 'inspection',
+  rules: { form_submit: 'ask', navigation: 'allow', read: 'allow', fill: 'ask', click: 'allow', js_execute: 'ask' },
+  session_overrides: {}
+};
+
+function loadPerms() {
+  try {
+    return JSON.parse(fs.readFileSync(PERMS_PATH, 'utf8'));
+  } catch {
+    savePerms(DEFAULT_PERMS);
+    return DEFAULT_PERMS;
+  }
+}
+function savePerms(p) {
+  fs.mkdirSync(path.dirname(PERMS_PATH), { recursive: true });
+  fs.writeFileSync(PERMS_PATH, JSON.stringify(p, null, 2));
+}
+
+function checkPermission(action) {
+  const p = loadPerms();
+  const override = p.session_overrides?.[action];
+  const rule = override ?? p.rules?.[action] ?? 'ask';
+  if (rule === 'allow') return { allowed: true };
+  if (rule === 'deny') return { allowed: false, reason: `Action '${action}' is denied by permissions policy.` };
+  if (p.trust_level === 'trusted') return { allowed: true };
+  return { allowed: false, reason: `Action '${action}' requires user approval. Use 'browser_set_permission' to allow it for this session.` };
+}
+
+
 // --- Session state ---
 let eidCounter = 0;
 const tabState = new Map();
@@ -383,6 +416,9 @@ function buildServer() {
     inputSchema: { eid: z.string().optional(), selector: z.string().optional(), tab_id: z.string().optional() }
   }, async ({ eid, selector, tab_id }) => {
     try {
+      const perm = checkPermission('click');
+      if (!perm.allowed) return { content: [{ type: 'text', text: 
+`<permission_denied>${perm.reason}</permission_denied>` }] };
       return await withCDP(tab_id, async (client, target) => {
         const EID_RE = /^(btn|lnk|inp|sel|chk|h|elt|alert)-\d+$/;
         const raw = eid || selector;
@@ -449,6 +485,9 @@ function buildServer() {
     inputSchema: { eid: z.string().optional(), selector: z.string().optional(), value: z.string(), tab_id: z.string().optional() }
   }, async ({ eid, selector, value, tab_id }) => {
     try {
+      const perm = checkPermission('fill');
+      if (!perm.allowed) return { content: [{ type: 'text', text: 
+`<permission_denied>${perm.reason}</permission_denied>` }] };
       return await withCDP(tab_id, async (client, target) => {
         const EID_RE = /^(btn|lnk|inp|sel|chk|h|elt|alert)-\d+$/;
         const raw = eid || selector;
@@ -492,6 +531,11 @@ function buildServer() {
     }
   }, async ({ find, action, value, tab_id }) => {
     try {
+      if (action === 'click' || action === 'fill') {
+        const perm = checkPermission(action);
+        if (!perm.allowed) return { content: [{ type: 'text', text: 
+`<permission_denied>${perm.reason}</permission_denied>` }] };
+      }
       return await withCDP(tab_id, async (client, target) => {
         const startN = eidCounter;
         const findResult = await client.Runtime.evaluate({
@@ -686,6 +730,9 @@ function buildServer() {
     inputSchema: { code: z.string(), tab_id: z.string().optional() }
   }, async ({ code, tab_id }) => {
     try {
+      const perm = checkPermission('js_execute');
+      if (!perm.allowed) return { content: [{ type: 'text', text: 
+`<permission_denied>${perm.reason}</permission_denied>` }] };
       return await withCDP(tab_id, async (client) => {
         const r = await client.Runtime.evaluate({ expression: code, returnByValue: true, awaitPromise: true });
         return { content: [{ type: 'text', text: JSON.stringify(r.result.value ?? r.result.description) }] };
@@ -732,6 +779,33 @@ function buildServer() {
     } catch (e) {
       return { content: [{ type: 'text', text: `<error tool="browser_select_tab">${escapeXml(e.message)}</error>` }] };
     }
+  });
+
+  server.registerTool('browser_set_permission', {
+    description: 'Set or override an agent permission for this session or permanently. action: the action name (fill, click, js_execute, form_submit, navigation, read). level: allow | deny | ask. scope: session (default) | permanent.',
+    inputSchema: {
+      action: z.enum(['fill', 'click', 'js_execute', 'form_submit', 'navigation', 'read']),
+      level: z.enum(['allow', 'deny', 'ask']),
+      scope: z.enum(['session', 'permanent']).default('session'),
+    }
+  }, async ({ action, level, scope }) => {
+    const p = loadPerms();
+    if (scope === 'permanent') {
+      p.rules[action] = level;
+    } else {
+      p.session_overrides[action] = level;
+    }
+    savePerms(p);
+    return { content: [{ type: 'text', text: 
+`Permission for '${action}' set to '${level}' (${scope}).` }] };
+  });
+
+  server.registerTool('browser_get_permissions', {
+    description: 'Read the current agent permission policy.',
+    inputSchema: {}
+  }, async () => {
+    const p = loadPerms();
+    return { content: [{ type: 'text', text: JSON.stringify(p, null, 2) }] };
   });
 
   return server;
