@@ -808,6 +808,61 @@ function buildServer() {
     return { content: [{ type: 'text', text: JSON.stringify(p, null, 2) }] };
   });
 
+  server.registerTool('browser_set_preference', {
+    description: 'Set a browser preference. font_size (int, live via CDP), zoom_level (float, via CDP page scale factor), theme/search_engine/show_bookmarks_bar (advisory only, no persistent write path yet).',
+    inputSchema: {
+      preference: z.string(),
+      value: z.union([z.string(), z.number(), z.boolean()]),
+      tab_id: z.string().optional(),
+    }
+  }, async ({ preference, value, tab_id }) => {
+    try {
+      return await withCDP(tab_id, async (client) => {
+        let result;
+
+        if (preference === 'font_size') {
+          await client.Runtime.evaluate({
+            expression: 
+`document.documentElement.style.fontSize = '${Number(value)}px'`,
+          });
+          result = 
+`Font size set to ${value}px (live only, resets on navigation)`;
+        }
+        else if (preference === 'zoom_level') {
+          await client.Emulation.setPageScaleFactor({ pageScaleFactor: Number(value) });
+          result = `Zoom set to ${value}`;
+        }
+        else if (preference === 'theme') {
+          const isDark = String(value).toLowerCase() === 'dark';
+          await client.Runtime.evaluate({
+            expression: 
+`document.documentElement.setAttribute('data-theme', '${isDark ? 'dark' : 'light'}')`,
+          });
+          result = 
+`Theme attribute set to ${value} (advisory only, no persistent storage outside extension context)`;
+        }
+        else if (preference === 'show_bookmarks_bar') {
+          result = `show_bookmarks_bar is advisory only (no C++/settings write path yet)`;
+        }
+        else if (preference === 'search_engine') {
+          const engines = { google: 'https://google.com/search?q={searchTerms}', brave: 'https://search.brave.com/search?q={searchTerms}', kagi: 'https://kagi.com/search?q={searchTerms}', ddg: 'https://duckduckgo.com/?q={searchTerms}' };
+          const url = engines[String(value).toLowerCase()];
+          if (!url) return { content: [{ type: 'text', text: 
+`Unknown search engine: ${value}. Options: google, brave, kagi, ddg` }] };
+          result = `search_engine noted as ${value} (advisory only, no persistent write path yet)`;
+        }
+        else {
+          return { content: [{ type: 'text', text: 
+`Unknown preference: ${preference}` }] };
+        }
+        return { content: [{ type: 'text', text: result }] };
+      });
+    } catch (e) {
+      return { content: [{ type: 'text', text: 
+`<error tool="browser_set_preference">${escapeXml(e.message)}</error>` }] };
+    }
+  });
+
   return server;
 }
 
