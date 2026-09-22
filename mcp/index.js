@@ -59,43 +59,99 @@ async function getTarget(tabId) {
   return pages[0];
 }
 
-// Retries only cover establishing the CDP connection (List + connect).
-// Once connected, errors from fn() (element not found, bad selector, etc.)
-// propagate immediately — they are application errors, not offline signals.
-async function connectCDP(tabId) {
-  const delays = [500, 1000, 2000, 4000];
-  let lastErr;
-  for (let i = 0; i <= delays.length; i++) {
+// --- Persistent CDP session manager (MCP V3, #6) ---
+// Holds one live CDP connection per tab, reused across tool calls instead of
+// reconnecting every time. Retries only cover establishing/repairing the
+// connection (List + connect) — once acquired, errors from fn() (element not
+// found, bad selector, etc.) propagate immediately on the first attempt, since
+// retrying fn() itself could re-run side effects like a click or form submit.
+class SessionManager {
+  constructor() {
+    this._sessions = new Map(); // tabId → { client, target, lastUsed }
+    this._ttl = 5 * 60 * 1000; // 5 min idle TTL
+    setInterval(() => this._evict(), 60_000).unref();
+  }
+
+  async get(tabId) {
+    const existing = this._sessions.get(tabId);
+    if (!existing) return null;
     try {
-      const target = await getTarget(tabId);
-      if (!target) throw new Error('No open page found in Auren');
-      const client = await withTimeout(
-        CDP({ ...MAC_CDP, target: target.id }), CONNECT_ATTEMPT_TIMEOUT_MS, 'CDP connect');
-      return { client, target };
-    } catch (e) {
-      lastErr = e;
-      if (i < delays.length) await new Promise(r => setTimeout(r, delays[i]));
+      await withTimeout(
+        existing.client.Runtime.evaluate({ expression: '1', returnByValue: true }),
+        CONNECT_ATTEMPT_TIMEOUT_MS, 'session liveness probe');
+      existing.lastUsed = Date.now();
+      return existing;
+    } catch {
+      this._sessions.delete(tabId);
+      await existing.client.close().catch(() => {});
+      return null;
     }
   }
-  // Worst-case bound: backoff delays plus one connect-attempt timeout per
-  // try (delays.length + 1 attempts total). Reflects the real cap, not
-  // just the backoff sum, since each attempt can itself stall.
-  const backoffSeconds = delays.reduce((a, b) => a + b, 0) / 1000;
-  const maxSeconds =
-      backoffSeconds + (delays.length + 1) * (CONNECT_ATTEMPT_TIMEOUT_MS / 1000);
-  throw new Error(
-    `Auren is offline — retried ${delays.length} times over ~${maxSeconds}s: ${lastErr.message}`
-  );
-}
 
-async function withCDP(tabId, fn) {
-  const { client, target } = await connectCDP(tabId);
-  try {
+  async open(tabId) {
+    const target = await getTarget(tabId);
+    if (!target) throw new Error('No open page found in Auren');
+
+    const client = await withTimeout(
+      CDP({ ...MAC_CDP, target: target.id }), CONNECT_ATTEMPT_TIMEOUT_MS, 'CDP connect');
     await client.Page.enable();
     await client.Runtime.enable();
-    return await fn(client, target);
-  } finally {
-    await client.close();
+
+    // auto-evict on disconnect so a dropped socket does not linger in the pool
+    client.on('disconnect', () => this._sessions.delete(target.id));
+
+    const session = { client, target, lastUsed: Date.now() };
+    this._sessions.set(target.id, session);
+    return session;
+  }
+
+  async acquire(tabId) {
+    const delays = [500, 1000, 2000, 4000];
+    let lastErr;
+    for (let i = 0; i <= delays.length; i++) {
+      try {
+        return (await this.get(tabId)) ?? (await this.open(tabId));
+      } catch (e) {
+        lastErr = e;
+        this._sessions.delete(tabId);
+        if (i < delays.length) await new Promise(r => setTimeout(r, delays[i]));
+      }
+    }
+    const backoffSeconds = delays.reduce((a, b) => a + b, 0) / 1000;
+    const maxSeconds =
+        backoffSeconds + (delays.length + 1) * (CONNECT_ATTEMPT_TIMEOUT_MS / 1000);
+    throw new Error(
+      `Auren is offline — retried ${delays.length} times over ~${maxSeconds}s: ${lastErr.message}`
+    );
+  }
+  _evict() {
+    const now = Date.now();
+    for (const [id, s] of this._sessions) {
+      if (now - s.lastUsed > this._ttl) {
+        s.client.close().catch(() => {});
+        this._sessions.delete(id);
+      }
+    }
+  }
+
+  async closeAll() {
+    for (const s of this._sessions.values()) await s.client.close().catch(() => {});
+    this._sessions.clear();
+  }
+}
+
+const sessions = new SessionManager();
+async function withCDP(tabId, fn) {
+  const session = await sessions.acquire(tabId ?? null);
+  session.lastUsed = Date.now();
+  try {
+    return await fn(session.client, session.target);
+  } catch (e) {
+    // Session may be stale/broken after this error, so drop it here rather
+    // than reuse a possibly-dead connection on the next call.
+    sessions._sessions.delete(session.target.id);
+    session.client.close().catch(() => {});
+    throw e;
   }
 }
 
