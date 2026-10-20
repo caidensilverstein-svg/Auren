@@ -9,15 +9,7 @@ struct SecurityState {
   bool js_enabled;
   bool https_enforced;
   bool cookies_isolated;
-  // Fingerprinting: an honest CONFIGURATION checklist, not a score. Each item
-  // is verified from live browser state (Shields setting, feature flags,
-  // prefs). It says nothing about how unique the browser actually is - that
-  // is measured by scripts/fingerprint-audit (see fingerprint_audit_* in the
-  // JS message).
-  int32 fingerprint_protections_active;
-  int32 fingerprint_protections_total;
-  // Human readable names of the checklist items that are NOT active.
-  string fingerprint_protections_missing;
+  int32 fingerprint_score;
   bool tor_active;
   string tor_exit_country;
   bool dns_active;
