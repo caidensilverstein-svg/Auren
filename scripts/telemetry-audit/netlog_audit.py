@@ -44,6 +44,9 @@ def host_of(url):
 
 def split_hostport(s):
     s = s.strip()
+    if "://" in s:
+        s = s.split("://", 1)[1]
+    s = s.split("/", 1)[0]
     if s.startswith("["):
         return s[1:s.find("]")].lower()
     if s.count(":") == 1:
@@ -113,6 +116,8 @@ def analyze(path, pats):
             if h:
                 hosts[h]["dns"] += 1
                 hosts[h]["source_types"][stype] += 1
+        elif t == "DNS_TRANSACTION" and e.get("phase") == 1 and isinstance(p.get("hostname"), str):
+            hosts[split_hostport(p["hostname"])]["dns"] += 1
         elif t in ("HTTP2_SESSION", "QUIC_SESSION", "SSL_CONNECT") and e.get("phase") == 1:
             h = split_hostport(p.get("host", "")) if isinstance(p.get("host"), str) else ""
             if h:
