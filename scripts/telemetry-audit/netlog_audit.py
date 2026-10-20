@@ -107,7 +107,8 @@ def analyze(path, pats):
     st = {v: k for k, v in c.get("logSourceType", {}).items()}
     hosts = collections.defaultdict(lambda: {
         "url_requests": 0, "dns": 0, "sessions": 0, "source_types": collections.Counter(),
-        "urls": collections.Counter(), "initiators": collections.Counter()})
+        "urls": collections.Counter(), "initiators": collections.Counter(),
+        "init_hosts": collections.Counter()})
     srcinfo = {}
     for e in d.get("events", []):
         t = et.get(e.get("type"), "")
@@ -123,6 +124,8 @@ def analyze(path, pats):
             u = p["url"].split("?")[0][:160]
             r["urls"][u] += 1
             r["initiators"][p.get("initiator", "-")] += 1
+            ih = host_of(p.get("initiator", ""))
+            r["init_hosts"][ih or "<browser>"] += 1
         elif t in ("HOST_RESOLVER_MANAGER_REQUEST", "HOST_RESOLVER_MANAGER_JOB") \
                 and e.get("phase") == 1 and "host" in p:
             h = split_hostport(p["host"]) if isinstance(p["host"], str) else ""
@@ -147,6 +150,7 @@ def analyze(path, pats):
             "source_types": dict(r["source_types"]),
             "sample_urls": [u for u, _ in r["urls"].most_common(5)],
             "initiators": dict(r["initiators"].most_common(3)),
+            "init_hosts": dict(r["init_hosts"]),
         }
     return out
 
@@ -159,7 +163,28 @@ def merge(results):
             else:
                 for k in ("url_requests", "dns", "sessions"):
                     m[h][k] += v[k]
+                for ih, n in v.get("init_hosts", {}).items():
+                    m[h].setdefault("init_hosts", {})
+                    m[h]["init_hosts"][ih] = m[h]["init_hosts"].get(ih, 0) + n
     return m
+
+def mark_page_requested(res, pats):
+    """A host is 'page-requested' when every URL request to it was initiated by
+    an allowlisted host (e.g. claude.ai side panel, a page the user opened) or
+    by another page-requested host (iframes, CDNs). Browser-initiated requests
+    ('<browser>') never qualify unless the host itself is allowlisted."""
+    good = {h for h, v in res.items() if v["class"] in ("allowlisted", "loopback")}
+    changed = True
+    while changed:
+        changed = False
+        for h, v in res.items():
+            if h in good:
+                continue
+            ih = v.get("init_hosts") or {}
+            if v["url_requests"] and ih and all(i in good for i in ih):
+                v["class"] = "page-requested"
+                good.add(h)
+                changed = True
 
 def main():
     ap = argparse.ArgumentParser()
@@ -174,6 +199,7 @@ def main():
                     help="do not fail on bare-IP TCP connects (name unknown)")
     a = ap.parse_args()
     pats = load_allowlist(a.allowlist, [x.lower() for x in a.allow_host])
+    a.pats = pats
     try:
         res = merge([analyze(p, pats) for p in a.netlogs])
     except Exception as ex:
@@ -184,6 +210,7 @@ def main():
             print("== timeline", p)
             for t, m, u in timeline(p):
                 print("%8.1fs %-5s %s" % (t, m, u))
+    mark_page_requested(res, pats)
     rows = sorted(res.items(), key=lambda kv: (kv[1]["class"], -kv[1]["url_requests"], kv[0]))
     lines = ["| host | class | url_req | dns | sess | sample URL |", "|---|---|---|---|---|---|"]
     for h, v in rows:
@@ -192,7 +219,7 @@ def main():
             (v["sample_urls"] or ["-"])[0]))
     table = "\n".join(lines)
     print(table)
-    bad = [h for h, v in res.items() if v["class"] in ("google", "brave", "other")
+    bad = [h for h, v in res.items() if v["class"] in ("google", "brave", "other", "browser-initiated")
            or (v["class"] == "ip-only" and not a.ignore_ip_only)]
     if a.baseline:
         old = json.load(open(a.baseline))
