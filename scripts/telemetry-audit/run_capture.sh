@@ -22,6 +22,10 @@ if [ $SCEN = 1 ]; then
   sleep 20
   node "$SD/scenario.js" $PORT 20 > "$A/scenario-$LABEL.log" 2>&1
 fi
+if [ -n "$UI_SCENARIO" ]; then
+  sleep 15
+  "$SD/ui_scenario.sh" $PID $PORT > "$A/ui-$LABEL.log" 2>&1
+fi
 if [ -n "$WEBUI_SCAN" ]; then
   sleep 15
   node "$SD/webui_scan.js" $PORT > "$A/webui-$LABEL.jsonl" 2>&1
