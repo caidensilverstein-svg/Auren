@@ -1,0 +1,29 @@
+# 0007-accept-language-fixed-q
+# Accept-Language: fixed ';q=0.9' (stock Chrome shape) instead of a random q per site/session.
+# Apply in the brave/ repo root: git apply <this file>
+
+diff --git a/browser/net/brave_reduce_language_network_delegate_helper.cc b/browser/net/brave_reduce_language_network_delegate_helper.cc
+--- a/browser/net/brave_reduce_language_network_delegate_helper.cc
++++ b/browser/net/brave_reduce_language_network_delegate_helper.cc
+@@ -74,17 +74,10 @@
+   if (!tokens.empty() && tokens[0] != accept_language_string) {
+     accept_language_string += "," + tokens[0];
+   }
+-  // Add a fake q value after the language code.
+-  brave_shields::FarblingPRNG prng;
+-
+-  auto* shields_settings_service =
+-      BraveShieldsSettingsServiceFactory::GetForProfile(profile);
+-  if (shields_settings_service &&
+-      shields_settings_service->MakePseudoRandomGeneratorForURL(
+-          origin_url, additional_entropy, &prng)) {
+-    accept_language_string += kFakeQValues[prng() % kFakeQValues.size()];
+-  }
+-
++  // Auren: fixed q-value, identical to stock Chrome ("en-US,en;q=0.9"). A random q
++  // per site/session (upstream Brave) is itself a signal and disagrees with
++  // navigator.languages.
++  accept_language_string += ";q=0.9";
+   return accept_language_string;
+ }
+ 

@@ -1,0 +1,18 @@
+# 0003-speech-voices-hidden
+# speechSynthesis.getVoices(): empty list whenever protection is on (no real + fake voice mix).
+# Apply in the brave/ repo root: git apply <this file>
+
+diff --git a/chromium_src/third_party/blink/renderer/modules/speech/speech_synthesis.cc b/chromium_src/third_party/blink/renderer/modules/speech/speech_synthesis.cc
+--- a/chromium_src/third_party/blink/renderer/modules/speech/speech_synthesis.cc
++++ b/chromium_src/third_party/blink/renderer/modules/speech/speech_synthesis.cc
+@@ -31,7 +31,9 @@
+     OnSetVoiceList_ChromiumImpl(std::move(mojom_voices));
+     return;
+   }
+-  if (farbling_level == BraveFarblingLevel::MAXIMUM) {
++  // Auren: hide the installed-voice list (181 entries on macOS 26: a high-entropy
++  // OS/language fingerprint) at every non-OFF level.
++  if (farbling_level != BraveFarblingLevel::OFF) {
+     // maximum farbling -> return empty voice list
+     VoicesDidChange();
+     return;

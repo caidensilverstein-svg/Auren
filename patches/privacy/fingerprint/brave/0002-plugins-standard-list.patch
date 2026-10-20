@@ -1,0 +1,93 @@
+# 0002-plugins-standard-list
+# navigator.plugins: stop adding fake plugins / renaming / shuffling; report Chrome's real PDF list.
+# Apply in the brave/ repo root: git apply <this file>
+
+diff --git a/chromium_src/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc b/chromium_src/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc
+--- a/chromium_src/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc
++++ b/chromium_src/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc
+@@ -85,78 +85,14 @@
+ 
+ void FarblePlugins(blink::LocalDOMWindow* window,
+                    HeapVector<Member<DOMPlugin>>& dom_plugins) {
+-  // |window| might be null but function can handle it.
+-  auto farbling_level = brave::GetBraveFarblingLevelFor(
+-      window, ContentSettingsType::BRAVE_WEBCOMPAT_PLUGINS,
+-      BraveFarblingLevel::OFF);
+-  switch (farbling_level) {
+-    case BraveFarblingLevel::OFF: {
+-      return;
+-    }
+-    case BraveFarblingLevel::MAXIMUM: {
+-      dom_plugins.clear();
+-      // "Maximum" behavior is clear existing plugins + "balanced" behavior,
+-      // so fall through here.
+-      [[fallthrough]];
+-    }
+-    case BraveFarblingLevel::BALANCED: {
+-      FarblingPRNG prng =
+-          BraveSessionCache::From(*(window)).MakePseudoRandomGenerator();
+-      for (unsigned index = 0; index < dom_plugins.size(); index++) {
+-        auto plugin = dom_plugins[index];
+-        String name = plugin->name();
+-        String description = plugin->description();
+-        // Built-in plugins get their names and descriptions farbled as well.
+-        if ((name == "Chrome PDF Plugin") || (name == "Chrome PDF Viewer")) {
+-          std::vector<const char*> mime_types{"application/pdf", "text/pdf"};
+-          dom_plugins[index] = BraveMakeFakePlugin(
+-              window, PluginReplacementName(&prng),
+-              BraveSessionCache::From(*window).GenerateRandomString(
+-                  plugin->filename().Ascii(), 32),
+-              description, mime_types, description, "pdf");
+-        }
+-      }
+-      // Add fake plugin #1.
+-      dom_plugins.push_back(BraveMakeFakePlugin(
+-          window,
+-          BraveSessionCache::From(*window).GenerateRandomString("PLUGIN_1_NAME",
+-                                                                8),
+-          BraveSessionCache::From(*window).GenerateRandomString(
+-              "PLUGIN_1_FILENAME", 16),
+-          BraveSessionCache::From(*window).GenerateRandomString(
+-              "PLUGIN_1_DESCRIPTION", 32),
+-          std::vector<const char*>{"", ""},
+-          BraveSessionCache::From(*window).GenerateRandomString(
+-              "MIME_1_DESCRIPTION", 32),
+-          BraveSessionCache::From(*window)
+-              .GenerateRandomString("PLUGIN_1_EXTENSION", 3)
+-              .Ascii()
+-              .data()));
+-      // Add fake plugin #2.
+-      dom_plugins.push_back(BraveMakeFakePlugin(
+-          window,
+-          BraveSessionCache::From(*window).GenerateRandomString("PLUGIN_2_NAME",
+-                                                                7),
+-          BraveSessionCache::From(*window).GenerateRandomString(
+-              "PLUGIN_2_FILENAME", 15),
+-          BraveSessionCache::From(*window).GenerateRandomString(
+-              "PLUGIN_2_DESCRIPTION", 31),
+-          std::vector<const char*>{"", ""},
+-          BraveSessionCache::From(*window).GenerateRandomString(
+-              "MIME_2_DESCRIPTION", 32),
+-          BraveSessionCache::From(*window)
+-              .GenerateRandomString("PLUGIN_2_EXTENSION", 3)
+-              .Ascii()
+-              .data()));
+-      // Shuffle the list of plugins pseudo-randomly, based on the domain key.
+-      std::shuffle(dom_plugins.begin(), dom_plugins.end(), prng);
+-      return;
+-    }
+-  }
+-  NOTREACHED() << "Unexpected value for farbling_level: "
+-               << std::to_underlying(farbling_level);
++  // Auren: deliberately a no-op. Stock Chrome reports the five built-in PDF
++  // plugins and every Chrome user shares that list; random fake plugins,
++  // renamed PDF plugins and a shuffled order produce lists that exist in no
++  // real browser and are trivially detectable (see harness check
++  // consistency.plugins_are_chrome_standard_five).
++  (void)window;
++  (void)dom_plugins;
+ }
+-
+ }  // namespace brave
+ 
+ #define BRAVE_DOM_PLUGINS_UPDATE_PLUGIN_DATA__FARBLE_PLUGIN_DATA \

@@ -1,0 +1,811 @@
+{
+ "name": "auren-mac-v1",
+ "description": "Target policy for the Auren fingerprint profile \"Auren-Mac-Chrome\" (docs/privacy/fingerprinting/policy.md). Written BEFORE the patches exist: current Brave-derived builds are expected to FAIL several checks; that gap is the work list.",
+ "surfaceClass": {
+  "default": {
+   "allow": [
+    "constant",
+    "per-site",
+    "per-site-session",
+    "per-session",
+    "single-sample"
+   ]
+  },
+  "navigator": {
+   "allow": [
+    "constant",
+    "single-sample"
+   ]
+  },
+  "userAgentData": {
+   "allow": [
+    "constant",
+    "single-sample"
+   ]
+  },
+  "mediaQueries": {
+   "allow": [
+    "constant",
+    "single-sample"
+   ]
+  },
+  "intl": {
+   "allow": [
+    "constant",
+    "single-sample"
+   ]
+  },
+  "fonts": {
+   "allow": [
+    "constant",
+    "single-sample"
+   ]
+  },
+  "speech": {
+   "allow": [
+    "constant",
+    "single-sample"
+   ]
+  },
+  "mediaDevices": {
+   "allow": [
+    "constant",
+    "single-sample"
+   ]
+  },
+  "hardware": {
+   "allow": [
+    "constant",
+    "single-sample"
+   ]
+  },
+  "workerContext": {
+   "allow": [
+    "constant",
+    "single-sample"
+   ]
+  },
+  "canvas2d": {
+   "allow": [
+    "per-site",
+    "per-site-session",
+    "constant",
+    "single-sample"
+   ],
+   "severity": "fail",
+   "note": "noise per site is permitted; instability within a site is not"
+  },
+  "webgl": {
+   "allow": [
+    "per-site",
+    "per-site-session",
+    "constant",
+    "single-sample"
+   ]
+  },
+  "audio": {
+   "allow": [
+    "per-site",
+    "per-site-session",
+    "constant",
+    "single-sample"
+   ]
+  }
+ },
+ "checks": [
+  {
+   "id": "nav.ua_frozen_chrome_mac",
+   "path": "navigator.userAgent",
+   "op": "match",
+   "value": "^Mozilla/5\\.0 \\(Macintosh; Intel Mac OS X 10_15_7\\) AppleWebKit/537\\.36 \\(KHTML, like Gecko\\) Chrome/\\d+\\.0\\.0\\.0 Safari/537\\.36$",
+   "severity": "fail",
+   "desc": "UA is the frozen Chrome-on-macOS string, no extra tokens/spaces"
+  },
+  {
+   "id": "nav.platform",
+   "path": "navigator.platform",
+   "op": "eq",
+   "value": "MacIntel",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "nav.vendor",
+   "path": "navigator.vendor",
+   "op": "eq",
+   "value": "Google Inc.",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "nav.languages",
+   "path": "navigator.languages",
+   "op": "eq",
+   "value": [
+    "en-US",
+    "en"
+   ],
+   "severity": "fail",
+   "desc": "fixed common language list (configurable per user)"
+  },
+  {
+   "id": "nav.language",
+   "path": "navigator.language",
+   "op": "eq",
+   "value": "en-US",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "nav.hardwareConcurrency",
+   "path": "navigator.hardwareConcurrency",
+   "op": "eq",
+   "value": 8,
+   "severity": "fail",
+   "desc": "fixed, identical in all contexts"
+  },
+  {
+   "id": "nav.deviceMemory",
+   "path": "navigator.deviceMemory",
+   "op": "eq",
+   "value": 8,
+   "severity": "fail",
+   "desc": "fixed constant; Chromium 151 desktop buckets to 2..32 so 8 is plausible"
+  },
+  {
+   "id": "nav.webdriver_false",
+   "path": "navigator.webdriver",
+   "op": "falsy",
+   "severity": "fail",
+   "desc": "no automation flag in normal use (CDP port alone does not set it)"
+  },
+  {
+   "id": "nav.no_navigator_brave",
+   "path": "navigator.hasNavigatorBrave",
+   "op": "eq",
+   "value": false,
+   "severity": "fail",
+   "desc": "navigator.brave removed"
+  },
+  {
+   "id": "nav.plugins_standard_five",
+   "path": "navigator.plugins",
+   "op": "lenEq",
+   "value": 5,
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "nav.pdf_viewer_enabled",
+   "path": "navigator.pdfViewerEnabled",
+   "op": "eq",
+   "value": true,
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "nav.plugin_names",
+   "path": "navigator.plugins",
+   "op": "noneMatch",
+   "value": "\"name\":\"[A-Za-z0-9]{6,9}\"",
+   "severity": "fail",
+   "desc": "no random-name fake plugins"
+  },
+  {
+   "id": "nav.maxTouchPoints",
+   "path": "navigator.maxTouchPoints",
+   "op": "eq",
+   "value": 0,
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "nav.doNotTrack_unset",
+   "path": "navigator.doNotTrack",
+   "op": "absent",
+   "severity": "warn",
+   "desc": ""
+  },
+  {
+   "id": "nav.gpc_on",
+   "path": "navigator.globalPrivacyControl",
+   "op": "eq",
+   "value": true,
+   "severity": "warn",
+   "desc": "GPC kept ON deliberately (1 documented bit)"
+  },
+  {
+   "id": "nav.no_suspicious_window_keys",
+   "path": "navigator.suspiciousWindowKeys",
+   "op": "emptyArray",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "nav.connection_absent_or_coarse",
+   "path": "navigator.connection",
+   "op": "absent",
+   "severity": "warn",
+   "desc": ""
+  },
+  {
+   "id": "uach.supported",
+   "path": "userAgentData.supported",
+   "op": "eq",
+   "value": true,
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "uach.brand_chromium",
+   "path": "userAgentData.brands",
+   "op": "match",
+   "value": "\"brand\":\"Chromium\"",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "uach.brand_google_chrome",
+   "path": "userAgentData.brands",
+   "op": "match",
+   "value": "\"brand\":\"Google Chrome\"",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "uach.no_brave_auren_brand",
+   "path": "userAgentData.brands",
+   "op": "notMatch",
+   "value": "brave|auren",
+   "severity": "fail",
+   "desc": "regex checked case-insens below",
+   "flags": "i"
+  },
+  {
+   "id": "uach.mobile_false",
+   "path": "userAgentData.mobile",
+   "op": "eq",
+   "value": false,
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "uach.platform",
+   "path": "userAgentData.platform",
+   "op": "eq",
+   "value": "macOS",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "uach.platformVersion_coarse",
+   "path": "userAgentData.high.platformVersion",
+   "op": "match",
+   "value": "^\\d+\\.0\\.0$",
+   "severity": "warn",
+   "desc": ""
+  },
+  {
+   "id": "uach.architecture",
+   "path": "userAgentData.high.architecture",
+   "op": "eq",
+   "value": "arm",
+   "severity": "warn",
+   "desc": ""
+  },
+  {
+   "id": "uach.bitness",
+   "path": "userAgentData.high.bitness",
+   "op": "eq",
+   "value": "64",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "uach.model_empty",
+   "path": "userAgentData.high.model",
+   "op": "eq",
+   "value": "",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "uach.fullVersionList_no_brave",
+   "path": "userAgentData.high.fullVersionList",
+   "op": "notMatch",
+   "value": "brave|auren",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "screen.colorDepth",
+   "path": "screen.colorDepth",
+   "op": "eq",
+   "value": 24,
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "screen.window_origin_zero",
+   "path": "screen.windowOriginIsZero",
+   "op": "eq",
+   "value": true,
+   "severity": "fail",
+   "desc": "screenX/screenY not leaking window position"
+  },
+  {
+   "id": "screen.avail_top_zero",
+   "path": "screen.availTop",
+   "op": "eq",
+   "value": 0,
+   "severity": "fail",
+   "desc": "screen.availTop must not reveal menu-bar/dock geometry"
+  },
+  {
+   "id": "screen.avail_left_zero",
+   "path": "screen.availLeft",
+   "op": "eq",
+   "value": 0,
+   "severity": "fail"
+  },
+  {
+   "id": "screen.outer_equals_inner",
+   "path": "screen.outerMinusInner",
+   "op": "eq",
+   "value": {
+    "w": 0,
+    "h": 0
+   },
+   "severity": "fail",
+   "desc": "outerWidth/Height not randomised nor leaking chrome size"
+  },
+  {
+   "id": "screen.screen_equals_inner",
+   "path": "screen.screenEqualsInner",
+   "op": "eq",
+   "value": true,
+   "severity": "warn",
+   "desc": "screen size reports viewport (Safari AFP model); letterboxing is a future UI patch"
+  },
+  {
+   "id": "canvas.repeat_reads_stable",
+   "path": "canvas2d.repeatGetImageDataEqual",
+   "op": "eq",
+   "value": true,
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "canvas.repeat_dataurl_stable",
+   "path": "canvas2d.repeatToDataURLEqual",
+   "op": "eq",
+   "value": true,
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "canvas.noise_is_small",
+   "path": "canvas2d.noiseUniformFill.maxDelta",
+   "op": "lte",
+   "value": 2,
+   "severity": "fail",
+   "desc": "if noise is applied it must stay <=2 LSB"
+  },
+  {
+   "id": "webgl.available",
+   "path": "webgl.webgl",
+   "op": "present",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "webgl.renderer_target",
+   "path": "webgl.webgl.unmaskedRenderer",
+   "op": "eq",
+   "value": "ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)",
+   "severity": "fail",
+   "desc": "coarsened GPU family string"
+  },
+  {
+   "id": "webgl.vendor_target",
+   "path": "webgl.webgl.unmaskedVendor",
+   "op": "eq",
+   "value": "Google Inc. (Apple)",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "webgl.no_brave_literal",
+   "path": "webgl.webgl.unmaskedRenderer",
+   "op": "notMatch",
+   "value": "^Brave$",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "webgl.extension_objects_present",
+   "path": "webgl.webgl.extObjectMismatch",
+   "op": "emptyArray",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "webgl.no_fake_extensions",
+   "path": "webgl.webgl.extensions",
+   "op": "noneMatch",
+   "value": "EXT_(texture|expanded|polygon|circle|triangle|blend|draw)_(sampler|compressor|blender)",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "webgl2.renderer_target",
+   "path": "webgl.webgl2.unmaskedRenderer",
+   "op": "eq",
+   "value": "ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "webgpu.info_vendor_empty",
+   "path": "webgpu.info.vendor",
+   "op": "in",
+   "value": [
+    "",
+    null
+   ],
+   "severity": "fail",
+   "desc": "adapter info coarsened (vendor)",
+   "when": {
+    "path": "webgpu.info",
+    "op": "present"
+   }
+  },
+  {
+   "id": "webgpu.info_device_empty",
+   "path": "webgpu.info.device",
+   "op": "in",
+   "value": [
+    "",
+    null
+   ],
+   "severity": "fail",
+   "desc": "",
+   "when": {
+    "path": "webgpu.info",
+    "op": "present"
+   }
+  },
+  {
+   "id": "webgpu.info_description_empty",
+   "path": "webgpu.info.description",
+   "op": "in",
+   "value": [
+    "",
+    null
+   ],
+   "severity": "fail",
+   "desc": "",
+   "when": {
+    "path": "webgpu.info",
+    "op": "present"
+   }
+  },
+  {
+   "id": "webgpu.info_architecture_empty",
+   "path": "webgpu.info.architecture",
+   "op": "in",
+   "value": [
+    "",
+    null
+   ],
+   "severity": "fail",
+   "desc": "",
+   "when": {
+    "path": "webgpu.info",
+    "op": "present"
+   }
+  },
+  {
+   "id": "audio.repeat_render_stable",
+   "path": "audio.repeatRenderEqual",
+   "op": "eq",
+   "value": true,
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "audio.buffer_noise_small",
+   "path": "audio.getChannelDataNoise.maxDelta",
+   "op": "lte",
+   "value": 0.001,
+   "severity": "warn",
+   "desc": "",
+   "when": {
+    "path": "audio.getChannelDataNoise",
+    "op": "present"
+   }
+  },
+  {
+   "id": "fonts.no_nonbase_fonts",
+   "path": "fonts.detectedByWidth",
+   "op": "noneMatch",
+   "value": "^(Calibri|Cambria|Candara|Consolas|Constantia|Corbel|Segoe .*|Ubuntu.*|Roboto|Open Sans|Lato|Montserrat|Source .*|Fira .*|JetBrains Mono|Inter|Hack|Adobe .*|Minion Pro|Myriad Pro|Proxima Nova|Gotham|Nunito|Raleway|Oswald|Playfair Display|IBM Plex Sans|Cascadia Code|DejaVu .*|Liberation .*|Noto .*|Cantarell|Century Gothic|Garamond|Tw Cen MT|MS Gothic|MS PGothic|Microsoft .*|Malgun Gothic|Yu Gothic|Meiryo|SimSun|NSimSun)$",
+   "severity": "fail",
+   "desc": "only macOS base fonts visible (allowlist)"
+  },
+  {
+   "id": "fonts.canvas_equals_dom",
+   "path": "fonts.sameAsWidthMethod",
+   "op": "eq",
+   "value": true,
+   "severity": "warn",
+   "desc": ""
+  },
+  {
+   "id": "fonts.local_fonts_api_blocked",
+   "path": "fonts.localFontsPermission",
+   "op": "in",
+   "value": [
+    "denied",
+    "unsupported",
+    "prompt"
+   ],
+   "severity": "warn",
+   "desc": ""
+  },
+  {
+   "id": "speech.voices_hidden",
+   "path": "speech.count",
+   "op": "in",
+   "value": [
+    0,
+    null
+   ],
+   "severity": "fail",
+   "desc": "speechSynthesis voice list hidden"
+  },
+  {
+   "id": "media.no_labels",
+   "path": "mediaDevices.anyLabel",
+   "op": "eq",
+   "value": false,
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "webrtc.no_raw_ip",
+   "path": "webrtc.rawIpCount",
+   "op": "eq",
+   "value": 0,
+   "severity": "fail",
+   "desc": "only mDNS/none host candidates; no raw LAN/WAN IPs"
+  },
+  {
+   "id": "hw.no_battery_api",
+   "path": "hardware.batteryApi",
+   "op": "eq",
+   "value": false,
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "hw.no_webusb",
+   "path": "hardware.webusb.present",
+   "op": "eq",
+   "value": false,
+   "severity": "warn",
+   "desc": ""
+  },
+  {
+   "id": "hw.no_hid",
+   "path": "hardware.hid",
+   "op": "eq",
+   "value": false,
+   "severity": "warn",
+   "desc": ""
+  },
+  {
+   "id": "hw.no_serial",
+   "path": "hardware.serial",
+   "op": "eq",
+   "value": false,
+   "severity": "warn",
+   "desc": ""
+  },
+  {
+   "id": "hw.no_bluetooth",
+   "path": "hardware.bluetooth",
+   "op": "eq",
+   "value": false,
+   "severity": "warn",
+   "desc": ""
+  },
+  {
+   "id": "hw.no_sensor_constructors",
+   "path": "hardware.sensors",
+   "op": "valuesAll",
+   "value": false,
+   "severity": "warn",
+   "desc": ""
+  },
+  {
+   "id": "hw.no_midi",
+   "path": "hardware.midi",
+   "op": "eq",
+   "value": false,
+   "severity": "warn",
+   "desc": ""
+  },
+  {
+   "id": "storage.quota_rounded_gib",
+   "path": "storage.quotaRoundedToGiB",
+   "op": "eq",
+   "value": true,
+   "severity": "warn",
+   "desc": "storage.estimate() quota leaks disk size unless bucketed"
+  },
+  {
+   "id": "timing.perfnow_coarse",
+   "path": "timing.perfNowResolutionBucket",
+   "op": "in",
+   "value": [
+    "<=100us",
+    "<=200us",
+    "<=1ms",
+    ">1ms"
+   ],
+   "severity": "fail",
+   "desc": "performance.now() not finer than 100us in non-isolated contexts"
+  },
+  {
+   "id": "timing.no_performance_memory",
+   "path": "timing.performanceMemoryLimit",
+   "op": "in",
+   "value": [
+    null,
+    4294967296
+   ],
+   "severity": "warn",
+   "desc": "performance.memory must not leak RAM class"
+  },
+  {
+   "id": "headers.accept_language",
+   "path": "headers.fetchHeaders.accept-language",
+   "op": "eq",
+   "value": "en-US,en;q=0.9",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "headers.no_brave_in_ch",
+   "path": "headers.fetchHeaders.sec-ch-ua",
+   "op": "notMatch",
+   "value": "brave|auren",
+   "severity": "fail",
+   "desc": "checked case-insensitively below",
+   "flags": "i"
+  },
+  {
+   "id": "headers.sec_ch_ua_platform",
+   "path": "headers.fetchHeaders.sec-ch-ua-platform",
+   "op": "eq",
+   "value": "\"macOS\"",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "headers.sec_gpc",
+   "path": "headers.fetchHeaders.sec-gpc",
+   "op": "eq",
+   "value": "1",
+   "severity": "warn",
+   "desc": ""
+  },
+  {
+   "id": "headers.http_version",
+   "path": "headers.httpVersion",
+   "op": "eq",
+   "value": "1.1",
+   "severity": "warn",
+   "desc": "local test server is HTTP/1.1 (informational)"
+  },
+  {
+   "id": "tls.ja4_prefix",
+   "path": "headers.tls.ja4",
+   "op": "match",
+   "value": "^t13d\\d{4}h2_",
+   "severity": "warn",
+   "desc": "TLS 1.3, SNI, h2 ClientHello shape like Chrome",
+   "when": {
+    "path": "headers.tls.ja4",
+    "op": "present"
+   }
+  },
+  {
+   "id": "tls.ja4_equals_baseline",
+   "path": "headers.tls.ja4",
+   "op": "eqBaseline",
+   "value": "headers.tls.ja4",
+   "severity": "warn",
+   "desc": "JA4 equals stock Chrome baseline when --baseline given",
+   "when": {
+    "path": "headers.tls.ja4",
+    "op": "present"
+   }
+  },
+  {
+   "id": "tls.h2_settings_equals_baseline",
+   "path": "headers.tls.h2.remoteSettings",
+   "op": "eqBaseline",
+   "value": "headers.tls.h2.remoteSettings",
+   "severity": "warn",
+   "desc": "",
+   "when": {
+    "path": "headers.tls.h2",
+    "op": "present"
+   }
+  },
+  {
+   "id": "auto.no_cdp_runtime_leak",
+   "path": "automation.cdpRuntimeEnableLeak",
+   "op": "eq",
+   "value": false,
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "auto.not_headless",
+   "path": "automation.headlessUA",
+   "op": "eq",
+   "value": false,
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "auto.no_automation_globals",
+   "path": "automation.automationGlobals",
+   "op": "emptyArray",
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "auto.notification_permission_consistent",
+   "path": "automation.notificationPermissionMismatch",
+   "op": "in",
+   "value": [
+    false,
+    null
+   ],
+   "severity": "fail",
+   "desc": ""
+  },
+  {
+   "id": "blockers.no_injected_elements",
+   "path": "blockers.injectedElements",
+   "op": "emptyArray",
+   "severity": "warn",
+   "desc": ""
+  },
+  {
+   "id": "blockers.no_extension_leak",
+   "path": "blockers.extensionProbes",
+   "op": "valuesNoneMatch",
+   "value": "^loaded$",
+   "severity": "warn",
+   "desc": ""
+  }
+ ],
+ "consistency": {
+  "require": "*",
+  "severity": "fail",
+  "warnOnly": [
+   "canvas_png_matches_getImageData",
+   "canvas_put_get_roundtrip_exact",
+   "canvas_offscreen_equals_canvas",
+   "audio_getChannelData_exact",
+   "worker_canvas_imagedata_equals_main",
+   "iframe_canvas_noise_matches_main",
+   "dpr_matches_mq_resolution"
+  ]
+ }
+}
