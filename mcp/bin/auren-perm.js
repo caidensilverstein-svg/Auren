@@ -51,7 +51,18 @@ switch (cmd) {
     else console.log(JSON.stringify(await api('POST', '/history', args[0] ? { enabled: args[0] === 'on' } : undefined)));
     break;
   }
+  case 'panic': console.log(JSON.stringify(await api('POST', '/panic', { on: args[0] !== 'off' }))); break;
+  case 'domain': {
+    const [host, rule] = args;
+    console.log(JSON.stringify(await api('POST', '/domains', { host, rule: rule === 'remove' ? null : rule })));
+    break;
+  }
+  case 'log': {
+    const { entries } = await api('GET', `/audit?n=${Number(args[0]) || 30}`);
+    for (const e of entries) console.log(`${e.ts}  ${String(e.outcome).padEnd(9)} ${e.tool}  ${JSON.stringify(e.args)}  ${e.ms}ms`);
+    break;
+  }
   case 'revoke': console.log(JSON.stringify(await api('POST', '/revoke'))); break;
   default:
-    console.log('usage: auren-perm <list|requests|approve <id> [--permanent|--minutes N]|deny <id>|set <action> <allow|deny|ask>|trust <inspection|trusted>|revoke|history [on|off|clear]>');
+    console.log('usage: auren-perm <list|requests|approve <id> [--permanent|--minutes N]|deny <id>|set <action> <allow|deny|ask>|trust <inspection|trusted>|revoke|panic [on|off]|domain <host> <deny|readonly|allow|remove>|log [n]|history [on|off|clear]>');
 }
