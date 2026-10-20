@@ -133,8 +133,9 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
 
       <div style="display:flex;align-items:center;gap:6px">
         <span id="icon-fingerprint" style="display:inline-flex;align-items:center;color:var(--accent)"><i data-lucide="fingerprint" style="width:16px;height:16px"></i></span>
-        <span style="font-size:var(--text-xs);color:var(--text-secondary);letter-spacing:0.08em;text-transform:uppercase">Fingerprint</span>
-        <span id="val-fingerprint" style="font-size:var(--text-base);color:var(--accent);font-weight:600">94/100</span>
+        <span style="font-size:var(--text-xs);color:var(--text-secondary);letter-spacing:0.08em;text-transform:uppercase">Fingerprint config</span>
+        <span id="val-fingerprint" style="font-size:var(--text-base);color:var(--accent);font-weight:600">&hellip;</span>
+        <span id="val-fp-audit" style="font-size:var(--text-xs);color:var(--text-secondary)"></span>
       </div>
 
       <div style="display:flex;align-items:center;gap:6px">
@@ -163,7 +164,7 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
       tor:             { active: true, exitCountry: 'DE' },
       dns:             { active: true },
       js:              { active: true },
-      fingerprintScore: 94,
+      fp:              { active: 0, total: 0, missing: '', audit: null },
       httpsEnforced:   true,
       cookiesIsolated: true
     };
@@ -189,11 +190,30 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
       applyToggle('js', state.js.active,
           state.js.active ? 'On' : 'Off');
 
-      var fpC = state.fingerprintScore >= 80 ? ACCENT : DANGER;
+      // Fingerprint: a verified CONFIGURATION checklist (not a score) plus the
+      // last MEASURED audit result, if one exists. Nothing here is a mock.
+      var fp = state.fp;
+      var auditBad = fp.audit && fp.audit.measured && (fp.audit.fail > 0);
+      var fpC = (fp.total > 0 && fp.active === fp.total && !auditBad) ? ACCENT : DANGER;
       document.getElementById('icon-fingerprint').style.color = fpC;
       var fpEl = document.getElementById('val-fingerprint');
-      fpEl.textContent = state.fingerprintScore + '/100';
+      fpEl.textContent = fp.total ? (fp.active + '/' + fp.total) : '\u2026';
       fpEl.style.color = fpC;
+      var auditEl = document.getElementById('val-fp-audit');
+      if (fp.audit && fp.audit.measured) {
+        auditEl.textContent = 'audit ' + (fp.audit.fail || 0) + ' fail \u00b7 ' + (fp.audit.warn || 0) + ' warn';
+      } else {
+        auditEl.textContent = 'not measured';
+      }
+      var fpBox = fpEl.parentNode;
+      fpBox.title = 'Configuration check: ' + fp.active + ' of ' + fp.total +
+          ' verifiable protections active' +
+          (fp.missing ? ' (missing: ' + fp.missing + ')' : '') + '. ' +
+          (fp.audit && fp.audit.measured
+              ? 'Last measured audit (' + (fp.audit.date || '?') + ', policy ' + (fp.audit.policy || '?') + '): ' +
+                (fp.audit.fail || 0) + ' failed, ' + (fp.audit.warn || 0) + ' warnings.'
+              : 'No measured audit yet - run scripts/fingerprint-audit.') +
+          ' This is not a uniqueness score.';
 
       var httpsC = state.httpsEnforced ? ACCENT : DANGER;
       document.getElementById('icon-https').style.color = httpsC;
@@ -214,9 +234,17 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
       state.tor.exitCountry  = s.tor_exit_country || '';
       state.dns.active       = !!s.dns_active;
       state.js.active        = !!s.js_enabled;
-      state.fingerprintScore = s.fingerprint_score || 0;
+      state.fp.active        = s.fp_active || 0;
+      state.fp.total         = s.fp_total || 0;
+      state.fp.missing       = s.fp_missing || '';
       state.httpsEnforced    = !!s.https_enforced;
       state.cookiesIsolated  = !!s.cookies_isolated;
+      render();
+    }
+
+    // Called by C++ with the last measured fingerprint audit (or {measured:false}).
+    function onFingerprintAudit(a) {
+      state.fp.audit = a || null;
       render();
     }
 

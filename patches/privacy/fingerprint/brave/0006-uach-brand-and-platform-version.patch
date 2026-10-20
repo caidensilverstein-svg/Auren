@@ -1,0 +1,34 @@
+# 0006-uach-brand-and-platform-version
+# UA-CH brand list: 'Google Chrome' instead of 'Brave' (JS + Sec-CH-UA header share one source); 
+# platformVersion reduced to major.0.0.
+# Apply in the brave/ repo root: git apply <this file>
+
+diff --git a/chromium_src/components/embedder_support/user_agent_utils.cc b/chromium_src/components/embedder_support/user_agent_utils.cc
+--- a/chromium_src/components/embedder_support/user_agent_utils.cc
++++ b/chromium_src/components/embedder_support/user_agent_utils.cc
+@@ -10,7 +10,8 @@
+ 
+ namespace {
+ 
+-constexpr char kBraveBrandNameForCHUA[] = "Brave";
++// Auren: do not announce the Brave brand; blend into the Chrome brand list.
++constexpr char kBraveBrandNameForCHUA[] = "Google Chrome";
+ 
+ }  // namespace
+ 
+diff --git a/browser/brave_content_browser_client.cc b/browser/brave_content_browser_client.cc
+--- a/browser/brave_content_browser_client.cc
++++ b/browser/brave_content_browser_client.cc
+@@ -1605,6 +1605,12 @@
+   base::Version version(metadata.full_version);
+   metadata.full_version =
+       base::StrCat({base::NumberToString(version.components()[0]), ".0.0.0"});
++  // Auren: platformVersion reduced to the OS major version ("26.6.2" -> "26.0.0").
++  base::Version platform_version(metadata.platform_version);
++  if (platform_version.IsValid()) {
++    metadata.platform_version = base::StrCat(
++        {base::NumberToString(platform_version.components()[0]), ".0.0"});
++  }
+   return metadata;
+ }
+ 

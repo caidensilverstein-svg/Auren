@@ -1,3 +1,5 @@
 node_modules/
 .env
 *.log
+scripts/fingerprint-audit/out/
+node_modules/
