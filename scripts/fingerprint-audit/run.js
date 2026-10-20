@@ -46,6 +46,29 @@ async function runPage(cdp, url, { contextId, timeoutMs = 90000 }) {
   } finally { try { await cdp.send('Target.closeTarget', { targetId }); } catch (e) { /* */ } }
 }
 
+/* Compact, diff-friendly summary that is small enough to commit as a baseline. */
+function summarize(report, first) {
+  const S = first.surfaces; const d = (n) => (S[n] && S[n].data) || {};
+  const gl = d('webgl').webgl || {}; const gl2 = d('webgl').webgl2 || {};
+  return {
+    meta: report.meta, totals: report.evaluation.totals, combinedStableHash: report.analysis.combinedStableHash,
+    surfaces: Object.fromEntries(Object.entries(report.analysis.surfaces).map(([k, v]) => [k, { class: v.class, stableOnReload: v.withinStable, sameAcrossSites: v.originsEqual, sameAcrossSessions: v.sessionsEqual, verdict: report.evaluation.verdicts[k] || 'INFO' }])),
+    notPassing: report.evaluation.checks.filter((c) => c.status === 'FAIL' || c.status === 'WARN').map((c) => ({ status: c.status, id: c.id, expected: c.expected === undefined ? null : c.expected, actual: typeof c.actual === 'string' && c.actual.length > 160 ? c.actual.slice(0, 157) + '...' : (JSON.stringify(c.actual) || '').length > 200 ? (JSON.stringify(c.actual) || '').slice(0, 197) + '...' : c.actual })),
+    values: {
+      userAgent: d('navigator').userAgent, platform: d('navigator').platform, languages: d('navigator').languages, hardwareConcurrency: d('navigator').hardwareConcurrency, deviceMemory: d('navigator').deviceMemory,
+      pluginNames: (d('navigator').plugins || []).map((p) => p.name), brands: d('userAgentData').brands, platformVersion: d('userAgentData').high && d('userAgentData').high.platformVersion,
+      screen: { width: d('screen').width, height: d('screen').height, availTop: d('screen').availTop, colorDepth: d('screen').colorDepth, dpr: d('screen').devicePixelRatio },
+      webglUnmasked: [gl.unmaskedVendor, gl.unmaskedRenderer], webgl2Limits: gl2.params && { MAX_UNIFORM_BUFFER_BINDINGS: gl2.params.MAX_UNIFORM_BUFFER_BINDINGS, MAX_FRAGMENT_UNIFORM_BLOCKS: gl2.params.MAX_FRAGMENT_UNIFORM_BLOCKS },
+      webgpuInfo: d('webgpu').info, fontsDetected: (d('fonts').detectedByWidth || []).length, speechVoices: d('speech').count, battery: d('hardware').batteryApi,
+      acceptLanguage: d('headers').fetchHeaders && d('headers').fetchHeaders['accept-language'], secChUa: d('headers').fetchHeaders && d('headers').fetchHeaders['sec-ch-ua'],
+      tls: d('headers').tls && { ja4: d('headers').tls.ja4, ja3Sorted: d('headers').tls.ja3Sorted, h2Settings: d('headers').tls.h2 && d('headers').tls.h2.remoteSettings, h2PseudoOrder: d('headers').tls.h2 && d('headers').tls.h2.pseudoOrder },
+      headerOrder: d('headers').fetchHeaderOrder, performanceMemoryLimit: d('timing').performanceMemoryLimit, storageQuota: d('storage').quota,
+    },
+    measurements: report.metrics, entropyUpperBoundBits: report.entropy && report.entropy.upperBoundBits,
+    consistencyFailed: (d('consistency') || {}).failed,
+  };
+}
+
 async function main() {
   const label = opt('label', 'run');
   const { name: policyName, policy } = loadPolicy(opt('policy', 'auren-mac-v1'));
@@ -112,6 +135,7 @@ async function main() {
   const report = { meta: { ...raw.meta, policy: policyName }, analysis, evaluation, entropy, metrics };
   fs.writeFileSync(path.join(outDir, 'report.json'), JSON.stringify(report, null, 1));
   fs.writeFileSync(path.join(outDir, 'report.md'), markdown(report));
+  fs.writeFileSync(path.join(outDir, 'summary.json'), JSON.stringify(summarize(report, first), null, 1));
   console.log(markdown(report));
   console.log(`\nartifacts: ${outDir}`);
   const failOn = opt('fail-on', 'fail');
