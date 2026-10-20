@@ -15,7 +15,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const i = ++id; pend.set(i, res);
     ws.send(JSON.stringify({ id: i, method, params, sessionId }));
   });
-  const urls = ['chrome://newtab/', 'https://example.com/', 'https://en.wikipedia.org/wiki/Privacy',
+  const urls = process.env.SCENARIO_URLS ? process.env.SCENARIO_URLS.split(',') : ['chrome://newtab/', 'https://example.com/', 'https://en.wikipedia.org/wiki/Privacy',
     'https://duckduckgo.com/?q=weather', 'https://www.mozilla.org/en-US/'];
   const t = await send('Target.createTarget', { url: 'about:blank' });
   const targetId = t.result.targetId;
