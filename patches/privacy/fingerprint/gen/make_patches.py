@@ -105,7 +105,7 @@ inline constexpr char kWebGlUnmaskedRenderer[] =
     // (Note: this method requires a non-empty list, which the upstream code
     // guarantees.)
     languages_.Shrink(1);
-    const std::string first = languages_[0].Utf8();
+    const std::string first = languages_[0].Ascii();
     const size_t dash = first.find('-');
     if (dash != std::string::npos && dash > 0) {
       languages_.push_back(String(first.substr(0, dash).c_str()));
