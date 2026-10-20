@@ -1,0 +1,37 @@
+== timeline netlog-0-idle15min.json
+     0.0s POST  https://go-updater.brave.com/extensions
+     0.0s POST  https://go-updater.brave.com/extensions
+     0.0s POST  https://go-updater.brave.com/extensions
+     0.0s POST  https://go-updater.brave.com/extensions
+     0.0s POST  https://go-updater.brave.com/extensions
+     0.0s POST  https://go-updater.brave.com/extensions
+     0.0s POST  https://go-updater.brave.com/extensions
+     0.0s GET   https://variations.brave.com/seed
+     0.5s POST  https://go-updater.brave.com/extensions
+     0.6s POST  https://go-updater.brave.com/extensions
+     2.9s GET   https://usage-ping.brave.com/1/usage/brave-core
+     2.9s POST  https://go-updater.brave.com/extensions
+     3.0s POST  https://go-updater.brave.com/extensions
+     3.7s POST  https://go-updater.brave.com/extensions
+     5.0s POST  https://chrome.cloudflare-dns.com/dns-query
+     5.0s POST  https://chrome.cloudflare-dns.com/dns-query
+    59.9s POST  https://go-updater.brave.com/extensions
+    59.9s POST  https://chrome.cloudflare-dns.com/dns-query
+    59.9s POST  https://chrome.cloudflare-dns.com/dns-query
+   230.9s GET   https://safebrowsing.brave.com/v4/threatListUpdates:fetch
+   230.9s POST  https://chrome.cloudflare-dns.com/dns-query
+   230.9s POST  https://chrome.cloudflare-dns.com/dns-query
+| host | class | url_req | dns | sess | sample URL |
+|---|---|---|---|---|---|
+| go-updater.brave.com | brave | 13 | 51 | 2 | https://go-updater.brave.com/extensions |
+| safebrowsing.brave.com | brave | 1 | 6 | 1 | https://safebrowsing.brave.com/v4/threatListUpdates:fetch |
+| usage-ping.brave.com | brave | 1 | 7 | 1 | https://usage-ping.brave.com/1/usage/brave-core |
+| variations.brave.com | brave | 1 | 7 | 1 | https://variations.brave.com/seed |
+| chrome.cloudflare-dns.com | other | 6 | 27 | 4 | https://chrome.cloudflare-dns.com/dns-query |
+
+UNEXPECTED hosts: 5
+  ! other chrome.cloudflare-dns.com 6
+  ! brave go-updater.brave.com 13
+  ! brave safebrowsing.brave.com 1
+  ! brave usage-ping.brave.com 1
+  ! brave variations.brave.com 1

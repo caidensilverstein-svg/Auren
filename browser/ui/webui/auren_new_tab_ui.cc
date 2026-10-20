@@ -25,15 +25,13 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
 <meta charset="utf-8">
 <title>New Tab</title>
 <link rel="icon" type="image/png" href="favicon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/lucide@latest"></script>
+<!-- Privacy: no external fonts or CDN scripts. Everything is local; the page
+     must not make any network request (CSP below also enforces this). -->
 <style>
   :root {
     /* Typography */
-    --font-sans: 'Inter', system-ui, sans-serif;
-    --font-mono: 'DM Mono', 'Fira Code', monospace;
+    --font-sans: 'Inter', ui-sans-serif, -apple-system, 'SF Pro Text', system-ui, sans-serif;
+    --font-mono: 'DM Mono', ui-monospace, 'SF Mono', Menlo, monospace;
     --text-xs: 11px; --text-sm: 13px; --text-base: 15px; --text-lg: 17px; --text-xl: 20px;
 
     /* Colors - dark base */
@@ -240,9 +238,33 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
       }
     });
 
-    // Use load (not DOMContentLoaded) so the Lucide CDN script is ready.
+    // Local copies of the Lucide icon paths (ISC license) so the page never
+    // fetches an icon library from a CDN.
+    var ICONS = {
+      route: '<circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/>',
+      server: '<rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>',
+      braces: '<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/>',
+      fingerprint: '<path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 16h.01"/><path d="M21.8 16c.2-2 .131-5.354 0-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M8.65 22c.21-.66.45-1.32.57-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/>',
+      lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+      cookie: '<path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/><path d="M8.5 8.5v.01"/><path d="M16 15.5v.01"/><path d="M12 12v.01"/><path d="M11 17v.01"/><path d="M7 14v.01"/>'
+    };
+    function createIcons() {
+      var els = document.querySelectorAll('i[data-lucide]');
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        var body = ICONS[el.getAttribute('data-lucide')];
+        if (!body) { continue; }
+        var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" ' +
+            'fill="none" stroke="currentColor" stroke-width="2" ' +
+            'stroke-linecap="round" stroke-linejoin="round" ' +
+            'style="width:' + el.style.width + ';height:' + el.style.height +
+            '">' + body + '</svg>';
+        el.outerHTML = svg;
+      }
+    }
+
     window.addEventListener('load', function() {
-      if (window.lucide) { window.lucide.createIcons(); }
+      createIcons();
       render();
       if (window.chrome && chrome.send) {
         chrome.send('getSecurityState');
@@ -305,13 +327,16 @@ AurenNewTabUI::AurenNewTabUI(content::WebUI* web_ui)
 
   source->OverrideContentSecurityPolicy(
       network::mojom::CSPDirectiveName::StyleSrc,
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;");
+      "style-src 'self' 'unsafe-inline';");
   source->OverrideContentSecurityPolicy(
       network::mojom::CSPDirectiveName::ScriptSrc,
-      "script-src 'self' 'unsafe-inline' https://unpkg.com;");
+      "script-src 'self' 'unsafe-inline';");
   source->OverrideContentSecurityPolicy(
       network::mojom::CSPDirectiveName::FontSrc,
-      "font-src 'self' https://fonts.gstatic.com;");
+      "font-src 'self';");
+  // The page is fully static; forbid any fetch/XHR/WebSocket from it.
+  source->OverrideContentSecurityPolicy(
+      network::mojom::CSPDirectiveName::ConnectSrc, "connect-src 'none';");
   source->DisableTrustedTypesCSP();
 
   source->SetRequestFilter(
