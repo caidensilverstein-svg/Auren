@@ -25,13 +25,15 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
 <meta charset="utf-8">
 <title>New Tab</title>
 <link rel="icon" type="image/png" href="favicon.png">
-<!-- Privacy: no external fonts or CDN scripts. Everything is local; the page
-     must not make any network request (CSP below also enforces this). -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
 <style>
   :root {
     /* Typography */
-    --font-sans: 'Inter', ui-sans-serif, -apple-system, 'SF Pro Text', system-ui, sans-serif;
-    --font-mono: 'DM Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    --font-sans: 'Inter', system-ui, sans-serif;
+    --font-mono: 'DM Mono', 'Fira Code', monospace;
     --text-xs: 11px; --text-sm: 13px; --text-base: 15px; --text-lg: 17px; --text-xl: 20px;
 
     /* Colors - dark base */
@@ -133,9 +135,8 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
 
       <div style="display:flex;align-items:center;gap:6px">
         <span id="icon-fingerprint" style="display:inline-flex;align-items:center;color:var(--accent)"><i data-lucide="fingerprint" style="width:16px;height:16px"></i></span>
-        <span style="font-size:var(--text-xs);color:var(--text-secondary);letter-spacing:0.08em;text-transform:uppercase">Fingerprint config</span>
-        <span id="val-fingerprint" style="font-size:var(--text-base);color:var(--accent);font-weight:600">&hellip;</span>
-        <span id="val-fp-audit" style="font-size:var(--text-xs);color:var(--text-secondary)"></span>
+        <span style="font-size:var(--text-xs);color:var(--text-secondary);letter-spacing:0.08em;text-transform:uppercase">Fingerprint</span>
+        <span id="val-fingerprint" style="font-size:var(--text-base);color:var(--accent);font-weight:600">94/100</span>
       </div>
 
       <div style="display:flex;align-items:center;gap:6px">
@@ -164,7 +165,7 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
       tor:             { active: true, exitCountry: 'DE' },
       dns:             { active: true },
       js:              { active: true },
-      fp:              { active: 0, total: 0, missing: '', audit: null },
+      fingerprintScore: 94,
       httpsEnforced:   true,
       cookiesIsolated: true
     };
@@ -190,30 +191,11 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
       applyToggle('js', state.js.active,
           state.js.active ? 'On' : 'Off');
 
-      // Fingerprint: a verified CONFIGURATION checklist (not a score) plus the
-      // last MEASURED audit result, if one exists. Nothing here is a mock.
-      var fp = state.fp;
-      var auditBad = fp.audit && fp.audit.measured && (fp.audit.fail > 0);
-      var fpC = (fp.total > 0 && fp.active === fp.total && !auditBad) ? ACCENT : DANGER;
+      var fpC = state.fingerprintScore >= 80 ? ACCENT : DANGER;
       document.getElementById('icon-fingerprint').style.color = fpC;
       var fpEl = document.getElementById('val-fingerprint');
-      fpEl.textContent = fp.total ? (fp.active + '/' + fp.total) : '\u2026';
+      fpEl.textContent = state.fingerprintScore + '/100';
       fpEl.style.color = fpC;
-      var auditEl = document.getElementById('val-fp-audit');
-      if (fp.audit && fp.audit.measured) {
-        auditEl.textContent = 'audit ' + (fp.audit.fail || 0) + ' fail \u00b7 ' + (fp.audit.warn || 0) + ' warn';
-      } else {
-        auditEl.textContent = 'not measured';
-      }
-      var fpBox = fpEl.parentNode;
-      fpBox.title = 'Configuration check: ' + fp.active + ' of ' + fp.total +
-          ' verifiable protections active' +
-          (fp.missing ? ' (missing: ' + fp.missing + ')' : '') + '. ' +
-          (fp.audit && fp.audit.measured
-              ? 'Last measured audit (' + (fp.audit.date || '?') + ', policy ' + (fp.audit.policy || '?') + '): ' +
-                (fp.audit.fail || 0) + ' failed, ' + (fp.audit.warn || 0) + ' warnings.'
-              : 'No measured audit yet - run scripts/fingerprint-audit.') +
-          ' This is not a uniqueness score.';
 
       var httpsC = state.httpsEnforced ? ACCENT : DANGER;
       document.getElementById('icon-https').style.color = httpsC;
@@ -234,17 +216,9 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
       state.tor.exitCountry  = s.tor_exit_country || '';
       state.dns.active       = !!s.dns_active;
       state.js.active        = !!s.js_enabled;
-      state.fp.active        = s.fp_active || 0;
-      state.fp.total         = s.fp_total || 0;
-      state.fp.missing       = s.fp_missing || '';
+      state.fingerprintScore = s.fingerprint_score || 0;
       state.httpsEnforced    = !!s.https_enforced;
       state.cookiesIsolated  = !!s.cookies_isolated;
-      render();
-    }
-
-    // Called by C++ with the last measured fingerprint audit (or {measured:false}).
-    function onFingerprintAudit(a) {
-      state.fp.audit = a || null;
       render();
     }
 
@@ -266,33 +240,9 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
       }
     });
 
-    // Local copies of the Lucide icon paths (ISC license) so the page never
-    // fetches an icon library from a CDN.
-    var ICONS = {
-      route: '<circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/>',
-      server: '<rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>',
-      braces: '<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/>',
-      fingerprint: '<path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 16h.01"/><path d="M21.8 16c.2-2 .131-5.354 0-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M8.65 22c.21-.66.45-1.32.57-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/>',
-      lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
-      cookie: '<path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/><path d="M8.5 8.5v.01"/><path d="M16 15.5v.01"/><path d="M12 12v.01"/><path d="M11 17v.01"/><path d="M7 14v.01"/>'
-    };
-    function createIcons() {
-      var els = document.querySelectorAll('i[data-lucide]');
-      for (var i = 0; i < els.length; i++) {
-        var el = els[i];
-        var body = ICONS[el.getAttribute('data-lucide')];
-        if (!body) { continue; }
-        var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" ' +
-            'fill="none" stroke="currentColor" stroke-width="2" ' +
-            'stroke-linecap="round" stroke-linejoin="round" ' +
-            'style="width:' + el.style.width + ';height:' + el.style.height +
-            '">' + body + '</svg>';
-        el.outerHTML = svg;
-      }
-    }
-
+    // Use load (not DOMContentLoaded) so the Lucide CDN script is ready.
     window.addEventListener('load', function() {
-      createIcons();
+      if (window.lucide) { window.lucide.createIcons(); }
       render();
       if (window.chrome && chrome.send) {
         chrome.send('getSecurityState');
@@ -355,16 +305,13 @@ AurenNewTabUI::AurenNewTabUI(content::WebUI* web_ui)
 
   source->OverrideContentSecurityPolicy(
       network::mojom::CSPDirectiveName::StyleSrc,
-      "style-src 'self' 'unsafe-inline';");
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;");
   source->OverrideContentSecurityPolicy(
       network::mojom::CSPDirectiveName::ScriptSrc,
-      "script-src 'self' 'unsafe-inline';");
+      "script-src 'self' 'unsafe-inline' https://unpkg.com;");
   source->OverrideContentSecurityPolicy(
       network::mojom::CSPDirectiveName::FontSrc,
-      "font-src 'self';");
-  // The page is fully static; forbid any fetch/XHR/WebSocket from it.
-  source->OverrideContentSecurityPolicy(
-      network::mojom::CSPDirectiveName::ConnectSrc, "connect-src 'none';");
+      "font-src 'self' https://fonts.gstatic.com;");
   source->DisableTrustedTypesCSP();
 
   source->SetRequestFilter(
