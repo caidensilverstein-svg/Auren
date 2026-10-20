@@ -1,0 +1,40 @@
+# 0008-remove-navigator-brave
+# Do not install Navigator.brave / WorkerNavigator.brave (brave.isBrave()).
+# Apply in the brave/ repo root: git apply <this file>
+
+diff --git a/chromium_src/third_party/blink/renderer/platform/bindings/idl_member_installer.cc b/chromium_src/third_party/blink/renderer/platform/bindings/idl_member_installer.cc
+--- a/chromium_src/third_party/blink/renderer/platform/bindings/idl_member_installer.cc
++++ b/chromium_src/third_party/blink/renderer/platform/bindings/idl_member_installer.cc
+@@ -18,6 +18,12 @@
+   return kConnection == config.property_name;
+ }
+ 
++// Auren: never expose navigator.brave / WorkerNavigator.brave (brand leak).
++bool IsBraveConfig(const IDLMemberInstaller::AttributeConfig& config) {
++  constexpr std::string_view kBrave = "brave";
++  return kBrave == config.property_name;
++}
++
+ }  // namespace
+ 
+ // static
+@@ -35,7 +41,8 @@
+   const bool connection_attribute_enabled = base::FeatureList::IsEnabled(
+       blink::features::kNavigatorConnectionAttribute);
+   for (const auto& config : configs) {
+-    if (!connection_attribute_enabled && IsConnectionConfig(config)) {
++    if ((!connection_attribute_enabled && IsConnectionConfig(config)) ||
++        IsBraveConfig(config)) {
+       continue;
+     }
+     InstallAttribute(isolate, world, instance_template, prototype_template,
+@@ -59,7 +66,8 @@
+       blink::features::kNavigatorConnectionAttribute);
+   v8::Local<v8::Context> context = isolate->GetCurrentContext();
+   for (const auto& config : configs) {
+-    if (!connection_attribute_enabled && IsConnectionConfig(config)) {
++    if ((!connection_attribute_enabled && IsConnectionConfig(config)) ||
++        IsBraveConfig(config)) {
+       continue;
+     }
+     InstallAttribute(isolate, context, world, instance_object, prototype_object,
