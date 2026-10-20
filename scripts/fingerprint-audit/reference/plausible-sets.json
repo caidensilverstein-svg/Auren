@@ -1,0 +1,109 @@
+{
+  "meta": {
+    "status": "BOUNDS, NOT MEASUREMENTS",
+    "caveat": "Counts of plausible values (from hardware/spec facts) give an upper bound on bits per attribute. They are not frequencies from a real population. For real numbers supply --reference with a `distributions` map built from your own data (see docs/privacy/fingerprinting/harness.md).",
+    "sources": {
+      "hardwareConcurrency": "Public Apple Silicon/Intel Mac core counts (M1 8, M1 Pro/Max 8-10, M1 Ultra 20, M2 8-12, M2 Ultra 24, M3 8-16, M4 10-16; Intel 4-16).",
+      "deviceMemory": "Chromium caps navigator.deviceMemory at 8 and buckets to powers of two.",
+      "others": "Hand-chosen coarse sets; adjust as you learn more."
+    }
+  },
+  "plausible": {
+    "navigator.hardwareConcurrency": {
+      "values": [
+        4,
+        6,
+        8,
+        10,
+        11,
+        12,
+        14,
+        16,
+        20,
+        24
+      ],
+      "target": 8
+    },
+    "navigator.deviceMemory": {
+      "values": [
+        2,
+        4,
+        8
+      ],
+      "target": 8
+    },
+    "navigator.language": {
+      "values": [
+        "en-US",
+        "en-GB",
+        "de-DE",
+        "fr-FR",
+        "es-ES",
+        "ja-JP",
+        "zh-CN",
+        "pt-BR",
+        "ru-RU",
+        "it-IT",
+        "ko-KR",
+        "nl-NL",
+        "en-CA",
+        "en-AU",
+        "other"
+      ],
+      "target": "en-US"
+    },
+    "navigator.languages": {
+      "size": 100,
+      "target": [
+        "en-US",
+        "en"
+      ]
+    },
+    "navigator.pdfViewerEnabled": {
+      "values": [
+        true,
+        false
+      ],
+      "target": true
+    },
+    "navigator.globalPrivacyControl": {
+      "values": [
+        true,
+        false,
+        null
+      ],
+      "target": true
+    },
+    "navigator.maxTouchPoints": {
+      "values": [
+        0,
+        5
+      ],
+      "target": 0
+    },
+    "screen.devicePixelRatio": {
+      "values": [
+        1,
+        1.5,
+        2,
+        3
+      ],
+      "target": 2
+    },
+    "screen.colorDepth": {
+      "values": [
+        24,
+        30
+      ],
+      "target": 24
+    },
+    "intl.tz": {
+      "size": 40,
+      "target": null
+    },
+    "webgl.webgl.unmaskedRenderer": {
+      "size": 16,
+      "target": "ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)"
+    }
+  }
+}
