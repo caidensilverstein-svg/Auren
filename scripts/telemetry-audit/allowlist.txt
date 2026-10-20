@@ -1,0 +1,8 @@
+# Hosts the browser may contact with zero user navigation.
+# Only the claude.ai side panel (user-initiated) is permitted.
+# Hosts the user explicitly navigates to are passed with --allow-host.
+claude.ai
+*.claude.ai
+claude.com
+*.claude.com
+*.anthropic.com
