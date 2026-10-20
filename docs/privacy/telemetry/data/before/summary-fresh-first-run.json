@@ -1,0 +1,96 @@
+{
+ "chrome.cloudflare-dns.com": {
+  "class": "other",
+  "dns": 27,
+  "initiators": {
+   "not an origin": 6
+  },
+  "sample_urls": [
+   "https://chrome.cloudflare-dns.com/dns-query"
+  ],
+  "sessions": 4,
+  "source_types": {
+   "DNS_OVER_HTTPS": 6,
+   "HOST_RESOLVER_IMPL_JOB": 3,
+   "NETWORK_QUALITY_ESTIMATOR": 12,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 4,
+   "SSL_CONNECT_JOB": 2
+  },
+  "url_requests": 6
+ },
+ "go-updater.brave.com": {
+  "class": "brave",
+  "dns": 53,
+  "initiators": {
+   "not an origin": 13
+  },
+  "sample_urls": [
+   "https://go-updater.brave.com/extensions"
+  ],
+  "sessions": 2,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 2,
+   "NETWORK_QUALITY_ESTIMATOR": 26,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 7,
+   "SSL_CONNECT_JOB": 14,
+   "URL_REQUEST": 13
+  },
+  "url_requests": 13
+ },
+ "safebrowsing.brave.com": {
+  "class": "brave",
+  "dns": 6,
+  "initiators": {
+   "not an origin": 1
+  },
+  "sample_urls": [
+   "https://safebrowsing.brave.com/v4/threatListUpdates:fetch"
+  ],
+  "sessions": 1,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 1,
+   "NETWORK_QUALITY_ESTIMATOR": 2,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 1,
+   "URL_REQUEST": 1
+  },
+  "url_requests": 1
+ },
+ "usage-ping.brave.com": {
+  "class": "brave",
+  "dns": 7,
+  "initiators": {
+   "not an origin": 1
+  },
+  "sample_urls": [
+   "https://usage-ping.brave.com/1/usage/brave-core"
+  ],
+  "sessions": 1,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 1,
+   "NETWORK_QUALITY_ESTIMATOR": 2,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 1,
+   "SSL_CONNECT_JOB": 1,
+   "URL_REQUEST": 1
+  },
+  "url_requests": 1
+ },
+ "variations.brave.com": {
+  "class": "brave",
+  "dns": 7,
+  "initiators": {
+   "not an origin": 1
+  },
+  "sample_urls": [
+   "https://variations.brave.com/seed"
+  ],
+  "sessions": 1,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 1,
+   "NETWORK_QUALITY_ESTIMATOR": 2,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 1,
+   "SSL_CONNECT_JOB": 1,
+   "URL_REQUEST": 1
+  },
+  "url_requests": 1
+ }
+}
