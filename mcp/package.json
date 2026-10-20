@@ -12,5 +12,8 @@
   "scripts": {
     "start": "node index.js",
     "test": "node --test --test-timeout=60000 test/e2e.test.js"
+  },
+  "bin": {
+    "auren-perm": "bin/auren-perm.js"
   }
 }
