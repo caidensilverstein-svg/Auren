@@ -227,6 +227,46 @@ test('the agent can tighten its own permissions; a deny rule blocks reads', { sk
   await c.close();
 });
 
+test('history: can be disabled and cleared by the user, and read-gated', { skip }, async () => {
+  const c = await connect();
+  assert.equal((await admin('POST', '/history', { enabled: false })).body.enabled, false);
+  await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/not-recorded` });
+  await new Promise(r => setTimeout(r, 400));
+  assert.doesNotMatch(await call(c, 'browser_search_history', { query: 'not-recorded' }), /not-recorded/);
+  assert.equal((await admin('POST', '/history', { enabled: true })).body.enabled, true);
+  await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/recorded` });
+  await waitFor(async () => /recorded/.test(await call(c, 'browser_search_history', { query: 'recorded' })), 5000);
+  await call(c, 'browser_set_permission', { action: 'read', level: 'deny' });
+  assert.match(await call(c, 'browser_search_history', { query: 'recorded' }), /permission_denied/);
+  await admin('POST', '/revoke');
+  assert.equal((await admin('DELETE', '/history')).body.ok, true);
+  assert.match(await call(c, 'browser_search_history', { query: '' }), /No history found/);
+  await c.close();
+});
+
+test('history: migration strips queries from old rows and prunes by retention', { skip }, async () => {
+  const Database = (await import('better-sqlite3')).default;
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'auren-mig-'));
+  fs.mkdirSync(path.join(home, '.auren'));
+  const db = new Database(path.join(home, '.auren', 'history.db'));
+  db.exec(`CREATE TABLE visits (id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL, title TEXT, visited_at INTEGER NOT NULL, time_spent_ms INTEGER, scroll_depth_pct INTEGER, tab_id TEXT);
+    CREATE VIRTUAL TABLE visits_fts USING fts5(url, title, content='visits', content_rowid='id');`);
+  const ins = db.prepare('INSERT INTO visits (url,title,visited_at) VALUES (?,?,?)');
+  ins.run('https://a.test/p?token=SECRET#x', 'old-but-fresh', Date.now());
+  ins.run('https://a.test/ancient', 'ancient', Date.now() - 400 * 86_400_000);
+  db.close();
+  const port = await freePort();
+  const p = spawn(process.execPath, [path.join(here, '..', 'index.js')], {
+    env: { ...process.env, HOME: home, AUREN_MCP_PORT: String(port), AUREN_CDP_PORT: String(ports.cdp), AUREN_MCP_KEY: KEY }, stdio: 'ignore' });
+  await waitFor(() => fetch(`http://127.0.0.1:${port}/health`).then(r => r.ok));
+  p.kill('SIGKILL');
+  const db2 = new Database(path.join(home, '.auren', 'history.db'), { readonly: true });
+  const rows = db2.prepare('SELECT url FROM visits').all().map(r => r.url);
+  db2.close();
+  fs.rmSync(home, { recursive: true, force: true });
+  assert.deepEqual(rows, ['https://a.test/p']);
+});
+
 test('reports a structured offline error when Auren is unreachable', { skip }, async () => {
   const c = await connect();
   chrome.kill('SIGKILL');
