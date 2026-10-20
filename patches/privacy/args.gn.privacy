@@ -1,0 +1,44 @@
+# ---------------------------------------------------------------------------
+# Auren privacy sanctuary -- append to out/auren/args.gn (telemetry team, 2026-10-19)
+# Every Brave/Google service endpoint is compiled to a non-resolvable
+# ".invalid" name, and every Brave service that can phone home is compiled out.
+# Verified to pass `gn gen`; compile status is recorded in
+# docs/privacy/telemetry/03-hardening-changes.md.
+# ---------------------------------------------------------------------------
+
+# Compile out Brave services (same set Brave's own "Origin" SKU disables)
+enable_brave_stats_updater = false     # usage-ping.brave.com
+enable_brave_ads = false
+enable_brave_rewards = false
+enable_brave_wallet = false
+enable_brave_news = false
+enable_brave_talk = false
+enable_brave_vpn_v1 = false
+enable_brave_vpn_v2 = false
+enable_brave_vpn_panel = false
+enable_brave_vpn_wireguard = false
+enable_brave_wayback_machine = false   # archive.org lookups on 404 pages
+enable_playlist = false
+enable_playlist_webui = false
+enable_psst = false
+enable_web_discovery = false           # collector.wdp.brave.com
+enable_web_discovery_native = false
+enable_email_aliases = false
+enable_ai_chat = false                 # Leo (Brave account / Brave-hosted models)
+enable_brave_ai_chat_agent_profile = false
+enable_brave_education = false
+
+# Endpoints that stay compiled in are pointed at the .invalid TLD (RFC 2606):
+# they can never resolve, so even a missed code path cannot reach a server.
+brave_stats_updater_url = "https://stats.invalid"
+brave_variations_server_url = "https://variations.invalid/seed"
+brave_sync_endpoint = "https://sync.invalid/v2"
+updater_dev_endpoint = "https://updater.invalid/extensions"
+updater_prod_endpoint = "https://updater.invalid/extensions"
+update_check_url = "https://updates.invalid/service/update2/json"
+safebrowsing_api_endpoint = "safebrowsing.invalid"
+brave_google_api_endpoint = "https://geolocation.invalid/v1/geolocate?key="
+webcompat_report_api_endpoint = "https://webcompat.invalid/1/webcompat"
+brave_services_production_domain = "services.invalid"
+brave_services_staging_domain = "services.invalid"
+brave_services_dev_domain = "services.invalid"
