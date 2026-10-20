@@ -26,6 +26,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const r = await send('Page.navigate', { url: u }, sid);
     console.log('navigate', u, JSON.stringify(r.result || r.error));
     await sleep(dwell);
+    if (u.startsWith('chrome://')) {
+      // Resource-timing of the internal page: must be empty (no CDN/font loads)
+      // even if the network layer would have blocked them.
+      const e = await send('Runtime.evaluate', { returnByValue: true, expression:
+        'JSON.stringify({title:document.title,resources:performance.getEntriesByType("resource").map(x=>x.name)})' }, sid);
+      console.log('internal-page', u, e.result && e.result.result && e.result.result.value);
+    }
   }
   const tg = await send('Target.getTargets');
   console.log('targets:', tg.result.targetInfos.map((x) => x.type + ' ' + x.url).join('\n  '));
