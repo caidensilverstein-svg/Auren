@@ -6,6 +6,7 @@ import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import Database from 'better-sqlite3';
 
 (function loadEnv() {
   try {
@@ -54,6 +55,26 @@ function checkPermission(action) {
   if (p.trust_level === 'trusted') return { allowed: true };
   return { allowed: false, reason: `Action '${action}' requires user approval. Use 'browser_set_permission' to allow it for this session.` };
 }
+
+// --- Browsing path memory (#12) ---
+const HISTORY_DB_PATH = path.join(os.homedir(), '.auren', 'history.db');
+fs.mkdirSync(path.dirname(HISTORY_DB_PATH), { recursive: true });
+const historyDb = new Database(HISTORY_DB_PATH);
+historyDb.exec(`
+  CREATE TABLE IF NOT EXISTS visits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT NOT NULL,
+    title TEXT,
+    visited_at INTEGER NOT NULL,
+    time_spent_ms INTEGER,
+    scroll_depth_pct INTEGER,
+    tab_id TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_visits_url ON visits(url);
+  CREATE INDEX IF NOT EXISTS idx_visits_visited_at ON visits(visited_at);
+  CREATE VIRTUAL TABLE IF NOT EXISTS visits_fts USING fts5(url, title, content='visits', content_rowid='id');
+`);
+
 
 
 // --- Session state ---
@@ -129,6 +150,17 @@ class SessionManager {
       CDP({ ...MAC_CDP, target: target.id }), CONNECT_ATTEMPT_TIMEOUT_MS, 'CDP connect');
     await client.Page.enable();
     await client.Runtime.enable();
+
+    client.Page.on('frameNavigated', ({ frame }) => {
+      if (frame.parentId) return;
+      const url = frame.url;
+      if (!url || url === 'about:blank' || url.startsWith('chrome://')) return;
+      const title = frame.name || '';
+      const info = historyDb.prepare('INSERT INTO visits (url, title, visited_at, tab_id) VALUES (?, ?, ?, ?)')
+        .run(url, title, Date.now(), target.id);
+      historyDb.prepare('INSERT INTO visits_fts (rowid, url, title) VALUES (?, ?, ?)')
+        .run(info.lastInsertRowid, url, title);
+    });
 
     // auto-evict on disconnect so a dropped socket does not linger in the pool
     client.on('disconnect', () => this._sessions.delete(target.id));
@@ -861,6 +893,67 @@ function buildServer() {
       return { content: [{ type: 'text', text: 
 `<error tool="browser_set_preference">${escapeXml(e.message)}</error>` }] };
     }
+  });
+
+  server.registerTool('browser_search_history', {
+    description: 'Search your Auren browsing history by keyword. Returns matching URLs with titles and timestamps.',
+    inputSchema: {
+      query: z.string(),
+      limit: z.number().int().min(1).max(50).default(10),
+      since_hours: z.number().optional(),
+    }
+  }, async ({ query, limit, since_hours }) => {
+    try {
+      let rows;
+      const since = since_hours ? Date.now() - since_hours * 3600_000 : 0;
+      if (query.trim()) {
+        const phrase = '"' + query.replace(/"/g, '""') + '"';
+        rows = historyDb.prepare(`
+          SELECT v.url, v.title, v.visited_at, v.time_spent_ms
+          FROM visits_fts f
+          JOIN visits v ON v.id = f.rowid
+          WHERE visits_fts MATCH ? AND v.visited_at >= ?
+          ORDER BY v.visited_at DESC
+          LIMIT ?
+        `).all(phrase, since, limit);
+      } else {
+        rows = historyDb.prepare(`
+          SELECT url, title, visited_at, time_spent_ms FROM visits
+          WHERE visited_at >= ?
+          ORDER BY visited_at DESC LIMIT ?
+        `).all(since, limit);
+      }
+      if (!rows.length) return { content: [{ type: 'text', text: 
+`No history found matching that query.` }] };
+      const formatted = rows.map(r =>
+`${new Date(r.visited_at).toISOString()} — ${r.title || '(no title)'}
+  ${r.url}${r.time_spent_ms ? ` (${Math.round(r.time_spent_ms/1000)}s)` : ''}`
+      ).join('\n\n');
+      return { content: [{ type: 'text', text: formatted }] };
+    } catch (e) {
+      return { content: [{ type: 'text', text: 
+`<error>${escapeXml(e.message)}</error>` }] };
+    }
+  });
+
+  server.registerTool('browser_get_session_context', {
+    description: 'Get a summary of what you have been browsing recently.',
+    inputSchema: {
+      last_minutes: z.number().int().min(1).max(480).default(60),
+    }
+  }, async ({ last_minutes }) => {
+    const since = Date.now() - last_minutes * 60_000;
+    const rows = historyDb.prepare(`
+      SELECT url, title, visited_at, time_spent_ms FROM visits
+      WHERE visited_at >= ? ORDER BY visited_at ASC
+    `).all(since);
+    if (!rows.length) return { content: [{ type: 'text', text: 
+`No browsing activity in the last ${last_minutes} minutes.` }] };
+    const lines = rows.map(r =>
+`${new Date(r.visited_at).toLocaleTimeString()} — ${r.title || r.url}`
+    );
+    return { content: [{ type: 'text', text: 
+`Browsing context (last ${last_minutes} min):\n\n${lines.join('\n')}` }] };
   });
 
   return server;
