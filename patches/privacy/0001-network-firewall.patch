@@ -1,0 +1,113 @@
+diff --git a/services/network/url_loader_factory.cc b/services/network/url_loader_factory.cc
+--- a/services/network/url_loader_factory.cc
++++ b/services/network/url_loader_factory.cc
+@@ -6,10 +6,15 @@
+ 
+ #include <memory>
+ #include <optional>
++#include <array>
+ #include <string>
++#include <string_view>
+ #include <utility>
+ 
+ #include "base/check_op.h"
++#include "base/command_line.h"
++#include "base/logging.h"
++#include "base/strings/string_util.h"
+ #include "base/functional/bind.h"
+ #include "base/metrics/histogram_functions.h"
+ #include "base/notreached.h"
+@@ -17,6 +22,7 @@
+ #include "components/content_settings/core/common/content_settings.h"
+ #include "mojo/public/cpp/bindings/message.h"
+ #include "net/base/isolation_info.h"
++#include "net/base/net_errors.h"
+ #include "net/cookies/cookie_constants.h"
+ #include "net/cookies/cookie_setting_override.h"
+ #include "net/url_request/url_request_context.h"
+@@ -44,6 +50,67 @@ namespace network {
+ 
+ namespace {
+ 
++// [Auren] Service firewall (defense in depth). Browser-process requests that
++// are not navigations (SimpleURLLoader users: component/extension updaters,
++// variations, safe browsing, stats pings, sync, search suggestions, ...) must
++// never reach Brave or Google *service* hosts. Renderer-originated requests
++// (the pages the user opens, the claude.ai side panel) are not affected, and
++// neither are navigations, so the user can still visit any site, including
++// google.com and brave.com. Escape hatch for debugging only:
++// --auren-allow-service-requests.
++constexpr auto kAurenBlockedServiceDomains = std::to_array<std::string_view>({
++    // Brave
++    "brave.com",
++    "bravesoftware.com",
++    "brave.software",
++    "basicattentiontoken.org",
++    // Google
++    "google.com",
++    "googleapis.com",
++    "gstatic.com",
++    "gvt1.com",
++    "gvt2.com",
++    "google-analytics.com",
++    "googletagmanager.com",
++    "doubleclick.net",
++    "googlesyndication.com",
++    "googleadservices.com",
++    // Placeholder domain that all compiled-out Brave endpoints now use.
++    "invalid",
++});
++
++bool IsAurenBlockedServiceHost(std::string_view host) {
++  for (std::string_view domain : kAurenBlockedServiceDomains) {
++    if (host == domain) {
++      return true;
++    }
++    if (host.size() > domain.size() && base::EndsWith(host, domain) &&
++        host[host.size() - domain.size() - 1] == '.') {
++      return true;
++    }
++  }
++  return false;
++}
++
++bool ShouldBlockAurenServiceRequest(const mojom::URLLoaderFactoryParams& params,
++                                    const ResourceRequest& request) {
++  if (!params.process_id.is_browser()) {
++    return false;
++  }
++  if (request.mode == mojom::RequestMode::kNavigate) {
++    return false;
++  }
++  if (!request.url.SchemeIsHTTPOrHTTPS() && !request.url.SchemeIsWSOrWSS()) {
++    return false;
++  }
++  static const bool allow = base::CommandLine::ForCurrentProcess()->HasSwitch(
++      "auren-allow-service-requests");
++  if (allow) {
++    return false;
++  }
++  return IsAurenBlockedServiceHost(request.url.host());
++}
++
+ // Helper function template to create ObserverWrapper instances.
+ // Encapsulates the logic of potentially moving a PendingRemote from
+ // TrustedParams based on a member pointer, or using a fallback pointer.
+@@ -209,6 +276,17 @@ void URLLoaderFactory::CreateLoaderAndStartWithSyncClient(
+   // have been rejected at the CorsURLLoader layer.
+   DCHECK(!resource_request.trusted_params || params_->is_trusted);
+ 
++  if (ShouldBlockAurenServiceRequest(*params_, resource_request)) {
++    LOG(WARNING) << "AUREN_FIREWALL: blocked browser-process request to "
++                 << resource_request.url.host();
++    URLLoaderCompletionStatus status;
++    status.error_code = net::ERR_BLOCKED_BY_CLIENT;
++    status.exists_in_cache = false;
++    status.completion_time = base::TimeTicks::Now();
++    mojo::Remote<mojom::URLLoaderClient>(std::move(client))->OnComplete(status);
++    return;
++  }
++
+   if (resource_request.web_bundle_token_params.has_value() &&
+       resource_request.destination !=
+           network::mojom::RequestDestination::kWebBundle) {
