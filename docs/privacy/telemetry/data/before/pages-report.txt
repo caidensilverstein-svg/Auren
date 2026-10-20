@@ -1,0 +1,274 @@
+== timeline netlog-X-pages.json
+     0.0s POST  https://go-updater.brave.com/extensions
+     0.0s POST  https://go-updater.brave.com/extensions
+     0.0s POST  https://go-updater.brave.com/extensions
+     0.0s POST  https://go-updater.brave.com/extensions
+     0.0s POST  https://go-updater.brave.com/extensions
+     0.0s POST  https://go-updater.brave.com/extensions
+     0.0s POST  https://go-updater.brave.com/extensions
+     0.0s GET   https://variations.brave.com/seed
+     0.5s POST  https://go-updater.brave.com/extensions
+     0.6s POST  https://go-updater.brave.com/extensions
+     2.6s GET   https://usage-ping.brave.com/1/usage/brave-core
+     2.7s POST  https://go-updater.brave.com/extensions
+     2.8s POST  https://go-updater.brave.com/extensions
+     3.6s POST  https://go-updater.brave.com/extensions
+     5.0s POST  https://chrome.cloudflare-dns.com/dns-query
+     5.0s POST  https://chrome.cloudflare-dns.com/dns-query
+    17.3s GET   https://example.com/this-page-does-not-exist-404
+    17.3s POST  https://chrome.cloudflare-dns.com/dns-query
+    17.3s POST  https://chrome.cloudflare-dns.com/dns-query
+    17.4s GET   https://example.com/s.js
+    37.4s GET   https://github.com/login
+    37.4s POST  https://chrome.cloudflare-dns.com/dns-query
+    37.4s POST  https://chrome.cloudflare-dns.com/dns-query
+    37.6s GET   https://github.githubassets.com/assets/react-e27d1b3e03961e68.js
+    37.6s GET   https://github.githubassets.com/assets/react-compiler-runtime-4610bd6d3de9c049.js
+    37.6s POST  https://chrome.cloudflare-dns.com/dns-query
+    37.6s POST  https://chrome.cloudflare-dns.com/dns-query
+    37.6s GET   https://github.githubassets.com/assets/scheduler-58b860b049ca307c.js
+    37.6s GET   https://github.githubassets.com/assets/react-dom-e5fd46a22d5c4058.js
+    37.6s GET   https://github.githubassets.com/assets/react-dom-client-1b4a3ee065998cea.js
+    37.6s GET   https://github.githubassets.com/assets/react-is-e0b593954b4706d8.js
+    37.6s GET   https://github.githubassets.com/assets/react-jsx-runtime-4915cb0f5b3aff04.js
+    37.6s GET   https://github.githubassets.com/assets/react-reconciler-8e99e505c4429605.js
+    37.6s GET   https://github.githubassets.com/assets/light-3a3d2c708970e4e8.css
+    37.6s GET   https://github.githubassets.com/assets/light_high_contrast-9c7b506bdc5ea73f.css
+    37.6s GET   https://github.githubassets.com/assets/dark-c9dacb4ec19616db.css
+    37.6s GET   https://github.githubassets.com/assets/dark_high_contrast-5ef38214a3eabc7d.css
+    37.6s GET   https://github.githubassets.com/assets/primer-primitives-02e066689466a8cd.css
+    37.6s GET   https://github.githubassets.com/assets/primer-38ae573fa780d76a.css
+    37.6s GET   https://github.githubassets.com/assets/global-58d1122073b19732.css
+    37.6s GET   https://github.githubassets.com/assets/github-0b4a3ee3d18dc2f0.css
+    37.6s GET   https://github.githubassets.com/assets/high-contrast-cookie-dac2ceb09ceb817d.js
+    37.6s GET   https://github.githubassets.com/assets/wp-runtime-1ae24d633f624163.js
+    37.6s GET   https://github.githubassets.com/assets/app-foundation-799625033ee8341e.js
+    37.6s GET   https://github.githubassets.com/assets/app-runtime-75fe7337a5ae1f43.js
+    37.6s GET   https://github.githubassets.com/assets/fetch-utilities-4206e824857cdbac.js
+    37.6s GET   https://github.githubassets.com/assets/ser-1ce9ba53965ee000.js
+    37.6s GET   https://github.githubassets.com/assets/tp-e043b09789480cb5.js
+    37.7s GET   https://github.githubassets.com/assets/environment-d537b4206c3fb8b8.js
+    37.7s GET   https://github.githubassets.com/assets/app-runtime.11d24f4ef5060b0f.module.css
+    37.7s GET   https://github.githubassets.com/assets/catalyst-5bc36fa5a846f5a0.js
+    37.7s GET   https://github.githubassets.com/assets/selector-observer-7ae05416e4a383ae.js
+    37.7s GET   https://github.githubassets.com/assets/relative-time-element-b2d8b7dede692c9f.js
+    37.7s GET   https://github.githubassets.com/assets/by-473024a3f6cb3892.js
+    37.7s GET   https://github.githubassets.com/assets/ja9-b94de714266ba389.js
+    37.7s GET   https://github.githubassets.com/assets/3h2-5f8899065b81d778.js
+    37.7s GET   https://github.githubassets.com/assets/t2-19741658de225445.js
+    37.7s GET   https://github.githubassets.com/assets/z8-5c899bb34cf0fc51.js
+    37.7s GET   https://github.githubassets.com/assets/hj-ece3bec966e8a2b6.js
+    37.7s GET   https://github.githubassets.com/assets/wc-33edcf25ba11d33f.js
+    37.7s GET   https://github.githubassets.com/assets/github-elements-af556993612f3d93.js
+    37.7s GET   https://github.githubassets.com/assets/element-registry-b9bba57a560ccdf7.js
+    37.7s GET   https://github.githubassets.com/assets/runtime-helpers-b7e0a61126a143c7.js
+    37.7s GET   https://github.githubassets.com/assets/aria-live-edd851c704c6b3ca.js
+    37.7s GET   https://github.githubassets.com/assets/hotkey-a82e6cb07443fd1c.js
+    37.7s GET   https://github.githubassets.com/assets/react-core-7fe869c9c8566fc0.js
+    37.7s GET   https://github.githubassets.com/assets/a96-f44dcca0945fa24d.js
+    37.7s GET   https://github.githubassets.com/assets/ur-b820e79826e6a550.js
+    37.7s GET   https://github.githubassets.com/assets/4t-f1181f796eb9ea15.js
+    37.7s GET   https://github.githubassets.com/assets/pb0-b19b273276c337a2.js
+    37.7s GET   https://github.githubassets.com/assets/6n-b72a71e2477d5d76.js
+    37.7s GET   https://github.githubassets.com/assets/z-b2cf9f86cb4bed3b.js
+    37.7s GET   https://github.githubassets.com/assets/9k-707f3c96c4acaae5.js
+    37.7s GET   https://github.githubassets.com/assets/0r-4c4af04176d5b5a2.js
+    37.7s GET   https://github.githubassets.com/assets/etr-10a33b4e28a5264e.js
+    37.7s GET   https://github.githubassets.com/assets/ow-98d10140e8228c74.js
+    37.7s GET   https://github.githubassets.com/assets/b3-8c6a9e264988c148.js
+    37.7s GET   https://github.githubassets.com/assets/eonf-7297a0ec85fc5281.js
+    37.7s GET   https://github.githubassets.com/assets/xrz-5d469e804fd41d09.js
+    37.7s GET   https://github.githubassets.com/assets/yga-dd50cf95593467fe.js
+    37.7s GET   https://github.githubassets.com/assets/behaviors-42ff7527afc17911.js
+    37.7s GET   https://github.githubassets.com/assets/react-core.fab33199790f05d6.module.css
+    37.7s GET   https://github.githubassets.com/assets/8pa-cf55852a67f0ec7d.js
+    37.7s GET   https://github.githubassets.com/assets/settings-0537f20a585c1640.js
+    37.7s GET   https://github.githubassets.com/assets/a3-535693ca876f3978.js
+    37.7s GET   https://github.githubassets.com/assets/d0k-4b09f3c6dd6ac94b.js
+    37.7s GET   https://github.githubassets.com/assets/sessions-1dfc709ed9e09f7e.js
+    37.7s GET   https://github.githubassets.com/assets/qk-98282f4ca4a2049a.js
+    37.7s GET   https://github.githubassets.com/assets/signup-77c0560becd3b9f6.js
+    37.7s GET   https://github.githubassets.com/assets/qmp-308230626a2aedb0.js
+    37.7s GET   https://github.githubassets.com/assets/t7l-699ca510ac327acf.js
+    37.7s GET   https://github.com/manifest.json
+    37.7s GET   https://github.githubassets.com/assets/3s-ebbc335534e40b2a.js
+    37.7s GET   https://github.githubassets.com/assets/gj-b68aa2e46dac0e69.js
+    37.7s GET   https://github.githubassets.com/assets/bbj-120f614daab2ee1d.js
+    37.7s GET   https://github.githubassets.com/assets/keyboard-shortcuts-dialog-14c9cf46ddde133b.js
+    37.7s GET   https://github.githubassets.com/assets/primer-react-css.41e8289c1ff152bd.module.css
+    37.7s GET   https://github.githubassets.com/assets/keyboard-shortcuts-dialog.e920ac9b619970eb.module.css
+    37.7s GET   https://github.githubassets.com/assets/sessions-auth-header.10fcbe5aad925c14.module.css
+    37.7s GET   https://github.githubassets.com/assets/primer-react-aa472ad9b7027c95.js
+    37.7s GET   https://github.githubassets.com/assets/op-76db8804e205b5d5.js
+    37.7s GET   https://github.githubassets.com/assets/nc-2485e88d8a01d9c2.js
+    37.7s GET   https://github.githubassets.com/assets/hi-1f029929971544e3.js
+    37.7s GET   https://github.githubassets.com/assets/660-d1891742b04e8466.js
+    37.7s GET   https://github.githubassets.com/assets/sessions-auth-header-9b84fefb1fd618c2.js
+    38.1s GET   https://github.githubassets.com/assets/4f-e89d2dfef6e41245.js
+    38.1s GET   https://github.githubassets.com/assets/chunk-l1-52e2d81caf4a77f6.js
+    38.1s GET   https://github.githubassets.com/assets/chunk-lazy-element-webauthn-status-023639160ec7e00e.js
+    38.1s GET   https://github.githubassets.com/assets/chunk-lazy-element-select-panel-2949d3bedc69fb8f.js
+    38.1s GET   https://github.githubassets.com/assets/chunk-lazy-element-toggle-switch-4bb5ecd765593abb.js
+    38.2s GET   https://github.githubassets.com/assets/yg2-1ef73bfd680141dc.js
+    38.2s GET   https://github.githubassets.com/assets/chunk-lazy-element-cookie-consent-link-42530d061f8f24aa.js
+    38.2s GET   https://github.githubassets.com/assets/chunk-lazy-element-ghcc-consent-47aaf7da7816fc53.js
+    38.2s GET   https://github.githubassets.com/assets/chunk-lazy-element-microsoft-analytics-7a0a6d4fa4773160.js
+    38.2s GET   https://github.githubassets.com/assets/chunk-lazy-element-webauthn-get-594ac3b363fd9c1e.js
+    38.2s GET   https://github.githubassets.com/assets/chunk-lazy-element-webauthn-subtle-2b94efccee7968f5.js
+    38.2s GET   https://github.githubassets.com/assets/u2l.83cda5ce515ce175.module.css
+    38.2s GET   https://github.githubassets.com/assets/chunk-lazy-react-partial-keyboard-shortcuts-dialog-e779af1cc898552e.js
+    38.2s GET   https://github.githubassets.com/assets/1rv.eee676bc464d01e5.module.css
+    38.2s GET   https://github.githubassets.com/assets/chunk-lazy-react-partial-sessions-auth-header-c738770fdf5f6f09.js
+    38.3s POST  https://collector.github.com/github/collect
+    38.3s POST  https://chrome.cloudflare-dns.com/dns-query
+    38.3s POST  https://chrome.cloudflare-dns.com/dns-query
+    38.3s GET   https://github.githubassets.com/favicons/favicon-dark.svg
+    38.3s GET   https://github.githubassets.com/assets/apple-touch-icon-144x144-b882e354c005.png
+    38.3s GET   https://github.com/u2f/login_fragment
+    38.4s GET   https://github.githubassets.com/favicons/favicon-dark.png
+    38.5s POST  https://api.github.com/_private/browser/errors
+    38.5s POST  https://chrome.cloudflare-dns.com/dns-query
+    38.5s POST  https://chrome.cloudflare-dns.com/dns-query
+    38.5s POST  https://api.github.com/_private/browser/stats
+    38.5s GET   https://github.githubassets.com/assets/ha8.0151bcf9a3c3b903.module.css
+    38.6s GET   https://github.githubassets.com/assets/chunk-ha8-e96acb615db969a6.js
+    43.3s POST  https://collector.github.com/github/collect
+    57.6s GET   https://de.wikipedia.org/wiki/Datenschutz
+    57.6s POST  https://chrome.cloudflare-dns.com/dns-query
+    57.6s POST  https://chrome.cloudflare-dns.com/dns-query
+    58.0s GET   https://de.wikipedia.org/w/load.php
+    58.0s GET   https://de.wikipedia.org/w/load.php
+    58.0s GET   https://de.wikipedia.org/w/load.php
+    58.0s GET   https://de.wikipedia.org/w/load.php
+    58.0s GET   https://de.wikipedia.org/static/images/mobile/copyright/wikipedia-wordmark-en.svg
+    58.0s GET   https://de.wikipedia.org/static/images/icons/wikipedia.png
+    58.0s GET   https://de.wikipedia.org/static/images/mobile/copyright/wikipedia-tagline-de.svg
+    58.0s GET   https://de.wikipedia.org/w/load.php
+    58.0s GET   https://de.wikipedia.org/w/load.php
+    58.0s GET   https://de.wikipedia.org/w/skins/Vector/resources/skins.vector.styles/images/arrow-down-progressive.svg
+    58.0s GET   https://de.wikipedia.org/w/load.php
+    58.0s GET   https://de.wikipedia.org/w/skins/Vector/resources/skins.vector.styles/images/link-external-small-ltr-progressive.svg
+    58.0s GET   https://de.wikipedia.org/w/resources/src/mediawiki.skinning/images/magnify-clip-ltr.svg
+    58.0s GET   https://upload.wikimedia.org/wikipedia/commons/9/91/Wikipedia-logo-v2-25-alt.svg
+    58.0s GET   https://upload.wikimedia.org/wikipedia/commons/0/0d/Wikipedia-tagline-de-25.svg
+    58.0s POST  https://chrome.cloudflare-dns.com/dns-query
+    58.0s POST  https://chrome.cloudflare-dns.com/dns-query
+    58.1s GET   https://upload.wikimedia.org/wikipedia/commons/9/96/Link-external-small-ltr-progressive.svg
+    58.4s GET   https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ea/Disambig-dark.svg/60px-Disambig-dark.svg.png
+    58.4s POST  https://chrome.cloudflare-dns.com/dns-query
+    58.4s POST  https://chrome.cloudflare-dns.com/dns-query
+    58.4s GET   https://de.wikipedia.org/w/load.php
+    58.4s GET   https://de.wikipedia.org/w/load.php
+    58.4s GET   https://de.wikipedia.org/w/load.php
+    58.5s GET   https://de.wikipedia.org/w/load.php
+    58.5s GET   https://de.wikipedia.org/w/load.php
+    58.6s GET   https://de.wikipedia.org/static/favicon/wikipedia.ico
+    59.2s GET   https://de.wikipedia.org/wiki/Special:CentralAutoLogin/start
+    59.2s GET   https://meta.wikimedia.org/w/index.php
+    59.2s POST  https://chrome.cloudflare-dns.com/dns-query
+    59.2s POST  https://chrome.cloudflare-dns.com/dns-query
+    59.3s GET   https://meta.wikimedia.org/w/index.php
+    59.3s GET   https://auth.wikimedia.org/metawiki/wiki/Special:CentralAutoLogin/checkLoggedIn
+    59.3s POST  https://chrome.cloudflare-dns.com/dns-query
+    59.3s POST  https://chrome.cloudflare-dns.com/dns-query
+    59.3s GET   https://de.wikipedia.org/w/load.php
+    59.3s GET   https://de.wikipedia.org/w/load.php
+    59.3s GET   https://de.wikipedia.org/w/load.php
+    59.3s GET   https://de.wikipedia.org/w/load.php
+    59.3s GET   https://de.wikipedia.org/w/load.php
+    59.3s GET   https://de.wikipedia.org/w/load.php
+    59.3s GET   https://de.wikipedia.org/w/load.php
+    59.3s GET   https://de.wikipedia.org/w/load.php
+    59.3s GET   https://de.wikipedia.org/w/load.php
+    59.3s GET   https://de.wikipedia.org/w/load.php
+    59.5s GET   https://thumb.wikimedia.org/wikipedia/commons/thumb/c/ca/Wiki_Loves_Monuments_Logo_notext.svg/60px-Wiki_Loves_Monuments_Logo_notext.svg.png
+    59.6s POST  https://go-updater.brave.com/extensions
+    59.6s POST  https://chrome.cloudflare-dns.com/dns-query
+    59.6s POST  https://chrome.cloudflare-dns.com/dns-query
+    78.0s GET   https://www.google.com/
+    78.0s POST  https://chrome.cloudflare-dns.com/dns-query
+    78.0s POST  https://chrome.cloudflare-dns.com/dns-query
+    78.0s GET   https://www.google.com/
+    78.2s GET   https://www.google.com/xjs/_/ss/k=xjs.hd.gz-drebomDs.L.B1.O/am=AAACAAAAAgAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQiAAAAAAAAAgAAUYMIAEAAAAAAAADCAQAAAEMAAAAAAEAAAAACAAAAAACAAIAEAAAAAAAAAAAIAAAAAAAAACAAAAAAACAAIAAKAAAQQAEAAAAAAABAAAAAAAAAAAgMIAAAAAAAAAAAAAAAAAQAAAAAAAAAEAAAAIDAABAAAAAIBgAAAAAAAAAAAAAAAAAAAAAAAAAAAAgJkAAAEAAAAAAAQAAAAAAAAAQAIQQBgAAFBCwIAAAAAAAAWAAAAECgBKCIAAgQAAAAAAAEAAAAAAJACIQAAgAAAgAAAAAQACAAgAAggAAAIygAgKQDEQAABAIAAAEgAAAAAAAEAAAAAAAAAAAAACIAAAAAAAAAAABYAAADQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACg/d=1/ed=1/br=1/rs=ACT90oFw0R3-o_knwAT8f9YvKURjdxRThQ/m=cdos,hsm,jsa,mb4ZUb,cEt90b,SNUn3,qddgKe,sTsDMc,dtl0hd,eHDfl,YV5bee,d,csi
+    78.2s GET   https://www.google.com/xjs/_/js/k=xjs.hd.en.e3wS7roCkDI.2023.O/am=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgEAAAAIAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAAAAAAAAAAGCBIAEAAAAAAAAAAAIAAAAAAEAAAAAABgAACAAIAAKAADAQAAAAAAAAAAAAAAAAAAAAAhAIAAAAAEAAAAA_AMMMAIAAAAAAAAAAAAAgAgAAAAAAAAAAAsAAAAgEAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAFAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAgAAAAoAACAAACAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAIAQAAAAxAAAAAAAAAAAACAAAAAAHQABB5gSEEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAFsAupIAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEHoKAAAAAAAAYDE/d=1/ed=1/dg=4/br=1/rs=ACT90oGUD5Fi8aW1qcJMnVE3-fxJfUtkCQ/ee=ALeJib:B8gLwd;AfeaP:TkrAjf;BMxAGc:E5bFse;BgS6mb:fidj5d;BjwMce:cXX2Wb;BuJtU:v6yjN;CIZTGb:Kqhykb;CxXAWb:YyRLvc;DQEued:Fevhcf;DULqB:RKfG5c;Dkk6ge:JZmW9e;DpcR3d:zL72xf;EABSZ:MXZt9d;ESrPQc:mNTJvc;EVNhjf:pw70Gc;EjXHpb:pSHqh;EmZ2Bf:zr1jrb;EnlcNd:WeHg4;F54IAe:ZgsFh;F9mqte:UoRcbe;FSxmUe:fiZR8b;Fkukfc:i8H2c;Fmv9Nc:O1Tzwc;G0KhTb:LIaoZ;GleZL:J1A7Od;HMDDWe:G8QUdb;HtPxrd:Gx8jAb;IBADCc:RYquRb;IoGlCf:b5lhvb;IsdWVc:qzxzOb;JXJSm:ii1RGf;JXS8fb:Qj0suc;JqSq7d:y9ePhe;JsbNhc:Xd8iUd;K08hxe:zmbGlf;K5nYTd:ZDZcre;KA3P2:C3JnCe;KDb6nb:fE9n2;KOxcK:OZqGte;KQzWid:ZMKkN;KdIHef:BWtNj;KpRAue:Tia57b;LBgRLc:SdcwHb,XVMNvd;LBn8Cf:bJ9L0c;LEikZe:byfTOb,lsjVmc;LXA8b:q7OdKd;LsNahb:ucGLNb;MNkAde:KMCd1d;NJ1rfe:qTnoBf;NPKaK:SdcwHb;NSEoX:lazG7b;NjIwef:YVgi7d;Np8Qkd:Dpx6qc;Nyt6ic:jn2sGd;OIfWUb:qfOYcd;OgagBe:cNTe0;OiqE2c:TFpEK;OoK5v:Sp69O;OohIYe:mpEAQb;Pjplud:PoEs9b;PpTLXd:pJYjx;Q1Ow7b:x5CSu;Q7iJ9c:bVLZ3d;QE20Be:gIltO;QFOGlf:PQ2Aoe;QGR0gd:Mlhmy;QYLF2b:pAQYUd;Qk7yid:BbYS0d;Qw8Feb:jpavUe;R4IIIb:QWfeKf;R9Ulx:CR7Ufe;RCF5Sd:X1kBmd;RZKicf:PQXVv;Raf5me:mgvFMc;SFghJd:YRZpK;SLtqO:Kh1xYe;SMDL4c:fTfGO;SNUn3:ZwDk9d,xD8Kp;SNk4Je:wWMhg;ScI3Yc:e7Hzgb,e7Hzgb;ShpF6e:N0pvGc;Snahre:mGCtob;SzQQ3e:dNhofb;TIUVQd:lWTJwd;TroZ1d:vVVzjb;U96pRd:FsR04;UBKJZ:LGDJGb;UDrY1c:N0F29d,W50NVd,eps46d,wciyUe;UVmjEd:EesRsb;UVzb9c:IvPZ6d;UYRIEb:HzTAQc;UyG7Kb:wQd0G;V2HTTe:RolTY;VGRfx:VFqbr;VMuEm:pL7sBc;VN6jIc:ddQyuf;VOcgDe:YquhTb;VhA7bd:vAmQFf;VsAqSb:PGf2Re;W9QSQe:ynCWwc;WDGyFe:jcVOxd;WXtNeb:QU9BMd;Wfmdue:g3MJlb;Wl55ib:vgbiKb;Y3c5sd:FGbfLe;YIZmRd:A1yn5d;YV5bee:IvPZ6d;YnHUBf:sNsSob;ZSH6tc:QAvyLe;ZWEUA:afR4Cf;ZlOOMb:P0I0Ec;a56pNe:JEfCwb;aAJE9c:WHW6Ef;aCJ9tf:qKftvc;aVZq3e:EMeVIb;aZ61od:arTwJ;aci7y:Z5Tr6c;bUIkwb:WMwEHe;bcPXSc:gSZLJb;cEt90b:ws9Tlc;cFTWae:gT8qnd;dIoSBb:ZgGg9b;dLlj2:Qqt3Gf;dXdZV:a7QTqd;dowIGb:ebZ3mb,ebZ3mb;dtl0hd:lLQWFe;eBAeSb:Ck63tb;eBZ5Nd:audvde;eHDfl:ofjVkb;eJKchc:ATg1be;eO3lse:UefOmb;euOXY:OZjbQ;g8nkx:U4MzKc;gaub4:TN6bMe;gbfHR:qZtzib;gtVSi:ekUOYd;h3MYod:ws9Tlc;hK67qb:QWEO5b;hVic1b:Kqhykb;heHB1:sFczq;hjRo6e:F62sG;hlqGX:FWz1ic;hsLsYc:Vl118;hwoVHd:zw4U8c;iFQyKf:QIhFr;jJj2G:kF2o2b;k1O0rf:pnOULd;k2Qxcb:XY51pe;kbAm9d:MkHyGd;lOO0Vd:OTA3Ae;lbfkyf:MqGdUd;liAz7d:kF2o2b;mMVOGb:qDM7K;mWzs9c:fz5ukf;mtKMCc:ZG5Tfe;nBZnZe:CvErjb;nE6OJf:Fi4rsc;nEBWNb:MxKX9d;nJw4Gd:dPFZH;nrDcw:SuEoDe;oGtAuc:sOXFj;oSUNyd:fTfGO,fTfGO;oUlnpc:RagDlc;oiBhre:OuMkRd;okUaUd:wItadb;pKJiXd:VCenhc;pNsl2d:j9Yuyc;pXdRYb:JKoKVe;pj82le:ww04Df;qGV2uc:HHi04c;qQEoOc:KUM7Z,d7YSfd;qZx2Fc:j0xrE;qaS3gd:yiLg6e;qafBPd:sgY6Zb;qavrXe:I0C9u;qddgKe:d7YSfd,x4FYXe;rdexKf:FEkKD;rmWaj:PMS6Sd;ropkZ:hjoqoe;sTsDMc:JksfDf;sZmdvc:rdGEfc;tH4IIe:Ymry6;teSRSb:BMLai;tosKvd:ZCqP3;trZL0b:qY8PFe;uJfyCe:WJ5gBc;uuQkY:u2V3ud;vEYCNb:FaqsVd;vRlMvf:Iw9Xo;vfVwPd:lcrkwe;w3bZCb:ZPGaIb;w9w86d:XwhUEb,dt4g2b,gKD90c,lWVZVe;wFpbG:JbGbBc;wQlYve:aLUfP;wR5FRb:O1Gjze,TtcOte;wV5Pjc:L8KGxe;wxAT5b:tHKmqf;x9N9ie:KH4Qof;xBbsrc:NEW1Qc;xpaRob:AVqZ9b;yiL5Ab:MT0ZBd;ysNiMc:CpIBjd;yxTchf:KUM7Z;z97YGf:oug9te;zaIgPb:Sl0pxd/m=cdos,hsm,jsa,mb4ZUb,cEt90b,SNUn3,qddgKe,sTsDMc,dtl0hd,eHDfl,YV5bee,d,csi
+    78.2s GET   https://fonts.gstatic.com/s/googlesans/v29/4UaGrENHsxJlGDuGo1OIlL3Owp5eKQtG.woff2
+    78.2s GET   https://fonts.gstatic.com/s/roboto/v18/KFOmCnqEu92Fr1Mu4mxKKTU1Kg.woff2
+    78.2s GET   https://fonts.gstatic.com/s/roboto/v18/KFOlCnqEu92Fr1MmWUlfBBc4AMP6lQ.woff2
+    78.2s GET   https://fonts.gstatic.com/s/googlesans/v29/4UaGrENHsxJlGDuGo1OIlL3Owp5eKQtG.woff2
+    78.2s GET   https://fonts.gstatic.com/s/roboto/v18/KFOmCnqEu92Fr1Mu4mxKKTU1Kg.woff2
+    78.2s POST  https://chrome.cloudflare-dns.com/dns-query
+    78.2s POST  https://chrome.cloudflare-dns.com/dns-query
+    78.2s GET   https://fonts.gstatic.com/s/roboto/v18/KFOlCnqEu92Fr1MmWUlfBBc4AMP6lQ.woff2
+    78.2s GET   https://www.gstatic.com/og/_/js/k=og.asy.en_US.RQWeQL4C_as.2019.O/rt=j/m=_ac,_awd,ada,lldp,qads,abld/exm=/d=1/ed=1/rs=AA2YrTuGbsx8J9y5y-8vfZToQEl93Ak1HQ
+    78.3s GET   https://www.google.com/async/hpba
+    78.3s GET   https://www.gstatic.com/og/_/ss/k=og.asy.AJxojUGSPBk.L.W.O/m=ll_tdm,adcgm3,ll_fw,abld/excm=/d=1/ed=1/ct=zgms/rs=AA2YrTuGFRpKduKNm9VQnb3PWaoCmWEzEQ
+    78.3s POST  https://www.google.com/gen_204
+    78.3s OPTIONS https://ogads-pa.clients6.google.com/$rpc/google.internal.onegoogle.asyncdata.v1.AsyncDataService/GetAsyncData
+    78.3s POST  https://chrome.cloudflare-dns.com/dns-query
+    78.3s POST  https://chrome.cloudflare-dns.com/dns-query
+    78.4s POST  https://ogads-pa.clients6.google.com/$rpc/google.internal.onegoogle.asyncdata.v1.AsyncDataService/GetAsyncData
+    78.5s POST  https://www.google.com/gen_204
+    78.5s POST  https://www.google.com/gen_204
+    78.5s POST  https://www.google.com/gen_204
+    78.5s GET   https://www.google.com/xjs/_/js/k=xjs.hd.en.e3wS7roCkDI.2023.O/ck=xjs.hd.gz-drebomDs.L.B1.O/am=AAACAAAAAgAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQiAAACAgEAAgAIUYMIAEAAAAAAAADCAYAAAEMAAAAAAEAAAAACAAAAAAGCBIAEAAAAAAAAAAAIAAAAAAEAACAAABgAACAAIAAKAADQQAEAAAAAAABAAAAAAAAAAAhMIAAAAAEAAAAA_AMMMAYAAAAAAAAAEAAAgIjAABAAAAAIBgsAAAAgEAAAAAABgAAAAAAAAAAAAAgJkAAAEAAAAAAAQAAAAAAAAAQAIQQBgAAFBCwIAEAAAAAAWAAAAECgBKCIAAgQAAAAAAAFAAAAAAJACIQAAgAAAgAAAAoQACAAgCAggAAAIygAgKQDEQAABAMAAAEgAAAAAAAEAAAAAAAAAAAAACIAQAAAAxAAAABYAAADQACAAAAAAHQABB5gSEEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAFsAupIAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEHoKAAAAAAAAYDE/d=0/dg=0/br=1/ujg=1/rs=ACT90oHm8W9zysnVae5EixCNg2uo1lN3sQ/m=sy1sc,zmptHf,UEShwc,sy18z,YHnUBc,U9EYge,KdIHef,sy12t,loL8vb,sy140,sy13z,sy139,sy133,sy13a,sy13v,sydu,sydv,sydo,sy13y,sy137,sy135,sy134,syhh,sy132,sy13u,sy13q,sy13p,syiq,syhi,syhg,syed,sy13t,sy13w,sy138,sy13e,sy12v,sy13x,sy13n,sy13m,sy13g,sy13l,sy13h,sy13d,sy13c,sy13b,sy12x,sy12j,sy11e,sy11d,sy12y,ms4mZb,syzy,B2qlPe,sy18q,NzU6V,sy198,sy9r,WlNQGd,sy12i,sy12g,sy12f,DPreE,sy19a,sy199,nabPbb,abd,sy4b6,TDFkye
+    78.5s GET   https://www.google.com/xjs/_/js/md=2/k=xjs.hd.en.e3wS7roCkDI.2023.O/am=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgEAAAAIAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAAAAAAAAAAGCBIAEAAAAAAAAAAAIAAAAAAEAAAAAABgAACAAIAAKAADAQAAAAAAAAAAAAAAAAAAAAAhAIAAAAAEAAAAA_AMMMAIAAAAAAAAAAAAAgAgAAAAAAAAAAAsAAAAgEAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAFAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAgAAAAoAACAAACAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAIAQAAAAxAAAAAAAAAAAACAAAAAAHQABB5gSEEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAFsAupIAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEHoKAAAAAAAAYDE/rs=ACT90oGUD5Fi8aW1qcJMnVE3-fxJfUtkCQ
+    78.5s POST  https://www.google.com/client_204
+    78.6s GET   https://www.gstatic.com/images/branding/searchlogo/ico/favicon.ico
+    78.6s GET   https://www.google.com/shared_dict/homepage/1127cf665496ffaa33e116f56db33a5326303dfc70bf4747f953c068983b29f5.dict
+    78.6s GET   https://www.google.com/xjs/_/js/k=xjs.hd.en.e3wS7roCkDI.2023.O/am=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgEAAAAIAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAAAAAAAAAAECBIAEAAAAAAAAAAAIAAAAAAEAAAAAABgAACAAIAACAADAAAAAAAAAAAAAAAAAAAAAAAhAIAAAAAEAAAAA_AMMMAIAAAAAAAAAAAAAgAgAAAAAAAAAAAsAAAAgEAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAFAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAgAAAAoAACAAACAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAIAQAAAAxAAAAAAAAAAAACAAAAAAHQABB5gSEEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAFsAspIAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEHoKAAAAAAAAYDE/d=0/dg=0/br=1/rs=ACT90oHlFGuAYi2XxsnPoLLOVRmLhG5xAA/m=sy2pv,sy1fd,sy4bp,ifl
+    78.6s POST  https://www.google.com/gen_204
+    78.6s POST  https://www.google.com/gen_204
+    78.6s GET   https://www.google.com/complete/s
+    78.6s GET   https://www.google.com/async/hpba
+    78.7s GET   https://www.google.com/xjs/_/ss/k=xjs.hd.gz-drebomDs.L.B1.O/am=AAACAAAAAgAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQiAAAAAAAAAgAAUYMIAEAAAAAAAADCAQAAAEMAAAAAAEAAAAACAAAAAACAAIAEAAAAAAAAAAAIAAAAAAAAACAAAAAAACAAIAAKAAAQQAEAAAAAAABAAAAAAAAAAAgMIAAAAAAAAAAAAAAAAAQAAAAAAAAAEAAAAIDAABAAAAAIBgAAAAAAAAAAAAAAAAAAAAAAAAAAAAgJkAAAEAAAAAAAQAAAAAAAAAQAIQQBgAAFBCwIAAAAAAAAWAAAAECgBKCIAAgQAAAAAAAEAAAAAAJACIQAAgAAAgAAAAAQACAAgAAggAAAIygAgKQDEQAABAIAAAEgAAAAAAAEAAAAAAAAAAAAACIAAAAAAAAAAABYAAADQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACg/d=0/br=1/rs=ACT90oFw0R3-o_knwAT8f9YvKURjdxRThQ/m=sys6,syu7,sysq,syqg,sy18x
+    78.7s GET   https://www.google.com/xjs/_/js/k=xjs.hd.en.e3wS7roCkDI.2023.O/am=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgEAAAAIAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAAAAAAAAAAECBIAEAAAAAAAAAAAIAAAAAAEAAAAAABgAACAAIAACAADAAAAAAAAAAAAAAAAAAAAAAAhAIAAAAAEAAAAA_AMMMAIAAAAAAAAAAAAAgAgAAAAAAAAAAAsAAAAgEAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAFAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAgAAAAoAACAAACAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAIAQAAAAxAAAAAAAAAAAACAAAAAAHQABB5gSEEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAFsAspIAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEHoKAAAAAAAAYDE/d=0/dg=0/br=1/rs=ACT90oHlFGuAYi2XxsnPoLLOVRmLhG5xAA/m=sy19r,sy19i,sy19d,syjo,syg2,syjn,syix,syhm,syit,syg0,syc9,syc6,syc0,sy19e,SMquOb,sy97,sy96,syje,syjb,syjc,syja,sykn,sykm,sykj,syki,sykh,sykc,sykd,syju,syk4,syjy,syj8,syk5,syjs,sybx,sybv,syjt,syjr,sybw,syc1,sybn,sybq,syjq,syfw,syji,syjh,syj9,syj2,syj3,syj1,sycn,syhn,syie,syic,syib,syia,sy9o,syhz,syid,syi9,sydm,syds,sycc,sycv,sycu,syct,sycs,sych,sycq,sycr,sydp,sydh,sycz,syd0,sydg,sydb,syda,syd7,sycp,sydf,sycy,sydc,sycj,syck,sycl,syci,syd1,sycm,sydy,sycd,syc8,syc3,syc7,sycg,sydd,syi7,syi1,sye8,syir,syi8,syii,syij,syi6,syfx,syi0,syea,syeb,syec,sye3,sye2,sydj,sye5,sye0,sye6,sycf,syd6,sye1,sye9,syi4,syhv,syhx,syhs,syj0,syiz,syiy,syiw,syhl,syhj,sy9u,uxMpU,syha,syev,syew,syeu,syet,syad,syaa,sya9,sya8,sya7,sya6,Mlhmy,QGR0gd,PoEs9b,Pjplud,OTA3Ae,sya3,sy9y,A1yn5d,YIZmRd,sy9m,sy9i,sy9g,sy9f,sy9b,sy9a,byfTOb,lsjVmc,LEikZe,sy98,kWgXee,ovKuLd,sgY6Zb,qafBPd,ebZ3mb,dowIGb,sy21a,sy19w,syg4,d5EhJe,sy220,fCxEDd,sy21n,sy21o,sy21v,sy21p,syg3,syg1,syfz,sybz,syby,sybo,sybe,sybc,syfy,syfv,sy21r,sy21l,syft,sy21u,sy21t,sy1e6,sy21j,sy1cz,sy1cx,sy19z,sy19u,sy1a0,sy19l,sy19k
+    78.7s GET   https://www.google.com/xjs/_/js/k=xjs.hd.en.e3wS7roCkDI.2023.O/am=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgEAAAAIAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAAAAAAAAAAECBIAEAAAAAAAAAAAIAAAAAAEAAAAAABgAACAAIAACAADAAAAAAAAAAAAAAAAAAAAAAAhAIAAAAAEAAAAA_AMMMAIAAAAAAAAAAAAAgAgAAAAAAAAAAAsAAAAgEAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAFAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAgAAAAoAACAAACAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAIAQAAAAxAAAAAAAAAAAACAAAAAAHQABB5gSEEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAFsAspIAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEHoKAAAAAAAAYDE/d=0/dg=0/br=1/rs=ACT90oHlFGuAYi2XxsnPoLLOVRmLhG5xAA/m=sy1a1,T1HOxc,LFk59d,sy21g,sy21f,sy21d,sy21e,sy21c,sys6,zx30Y,sy222,sy221,sy19g,sy112,Wo3n8,ZgGg9b,dIoSBb,sy2si,b6knsb,sy2sf,sy2se,sy2aw,sy2b6,sy10w,sy280,syu7,sysq,syqg,sy18x,sy2b5,sy22p,sy18v,sygi,syem,syek,syb6,syeo,JKoKVe,pXdRYb,sy3w2,syb7,syb4,syb3,sy9s,O1Gjze,TtcOte,wR5FRb,sygg,sygd,syga,syg9,syde,syg8,syef,syg7,syg6,syg5,syfs,syfr,syff,syfp,syf2,syer,syes,syfo,syd5,syfd,syfm,syfc,syfk,syfb,syfj,syex,syez,syep,syfa,syfh,syf9,syfg,syf8,syf7,syf6,syf4,syf3,syf1,syf0,syfe,syeq,syej,syee,sybb,sy92,zbML3c,gskBEc,sy20i,s980lf,sy1a8,sy1a6,zGLm3b,sy4a1,sy4a0,sy1d4,sy1d5,DhPYme,sy4ac,sy3tu,sy3ts,sykp,sy3tz,sy3tt,sy3u1,sy3tp,sy4ab,KHourd,sy4bi,sy17k,sy11j,oQfbDd,dZKngb,sy262,xaJoqe,sy263,HLchQe,sy4by,sy268,sy1u6,sy266,sy1cw,sy1um,sy1uj,sy1uk,sy1ul,sygw,sy1ui,sy1ub,sy1uc,sy1ie,sy11c,sy11a,sy11b,sy119,sy1nw,sy1fs,sy269,qmjr3
+    78.8s GET   https://www.google.com/xjs/_/ss/k=xjs.hd.gz-drebomDs.L.B1.O/am=AAACAAAAAgAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQiAAAAAAAAAgAAUYMIAEAAAAAAAADCAQAAAEMAAAAAAEAAAAACAAAAAACAAIAEAAAAAAAAAAAIAAAAAAAAACAAAAAAACAAIAAKAAAQQAEAAAAAAABAAAAAAAAAAAgMIAAAAAAAAAAAAAAAAAQAAAAAAAAAEAAAAIDAABAAAAAIBgAAAAAAAAAAAAAAAAAAAAAAAAAAAAgJkAAAEAAAAAAAQAAAAAAAAAQAIQQBgAAFBCwIAAAAAAAAWAAAAECgBKCIAAgQAAAAAAAEAAAAAAJACIQAAgAAAgAAAAAQACAAgAAggAAAIygAgKQDEQAABAIAAAEgAAAAAAAEAAAAAAAAAAAAACIAAAAAAAAAAABYAAADQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACg/d=0/br=1/rs=ACT90oFw0R3-o_knwAT8f9YvKURjdxRThQ/m=y05UD,sy1y2,sy1ij,sy1yq,sy1ym,sysg,sy20x,sy20q,sy1ik,sy1ii,sy1il,sy1ih,syqk,syst,sy20r,sykx,sy20o,sy1jw,sy1im,sy1k2,epYOx
+    78.8s GET   https://www.google.com/xjs/_/js/k=xjs.hd.en.e3wS7roCkDI.2023.O/am=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgEAAAAIAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAAAAAAAAAAECBIAEAAAAAAAAAAAIAAAAAAEAAAAAABgAACAAIAACAADAAAAAAAAAAAAAAAAAAAAAAAhAIAAAAAEAAAAA_AMMMAIAAAAAAAAAAAAAgAgAAAAAAAAAAAsAAAAgEAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAFAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAgAAAAoAACAAACAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAIAQAAAAxAAAAAAAAAAAACAAAAAAHQABB5gSEEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAFsAspIAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEHoKAAAAAAAAYDE/d=0/dg=0/br=1/rs=ACT90oHlFGuAYi2XxsnPoLLOVRmLhG5xAA/m=qTnoBf,syan,sOXFj,oGtAuc,NJ1rfe,syaw,q0xTif,y05UD,sy1y2,sy1ij,sy1yq,sy1j1,sy1gp,sy1j0,sy1iz,sy1iy,sy1iw,sy20z,sy1ym,sy20y,sysg,sy20x,sy20q,sy1ip,sy1iq,sy1ik,sy1ii,sy1il,sy1ih,syqk,syst,sy20r,sy1oc,sy1j4,sy1fi,sy1j3,sy1gb,sy1iv,sy1iu,sy1ir,sy1j5,sy1it,sy20t,sykx,sy20o,sy20n,sy1yu,sy1yv,sy1jw,sy1im,sy1k2,sy1k0,sy1jz,sy1j7,sy1j6,sy1fu,sy1k3,epYOx
+    78.8s POST  https://www.google.com/gen_204
+    78.8s GET   https://www.google.com/client_204
+    78.8s POST  https://www.google.com/gen_204
+    78.8s GET   https://www.google.com/xjs/_/ss/k=xjs.hd.gz-drebomDs.L.B1.O/am=AAACAAAAAgAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQiAAAAAAAAAgAAUYMIAEAAAAAAAADCAQAAAEMAAAAAAEAAAAACAAAAAACAAIAEAAAAAAAAAAAIAAAAAAAAACAAAAAAACAAIAAKAAAQQAEAAAAAAABAAAAAAAAAAAgMIAAAAAAAAAAAAAAAAAQAAAAAAAAAEAAAAIDAABAAAAAIBgAAAAAAAAAAAAAAAAAAAAAAAAAAAAgJkAAAEAAAAAAAQAAAAAAAAAQAIQQBgAAFBCwIAAAAAAAAWAAAAECgBKCIAAgQAAAAAAAEAAAAAAJACIQAAgAAAgAAAAAQACAAgAAggAAAIygAgKQDEQAABAIAAAEgAAAAAAAEAAAAAAAAAAAAACIAAAAAAAAAAABYAAADQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACg/d=0/br=1/rs=ACT90oFw0R3-o_knwAT8f9YvKURjdxRThQ/m=syox,sys1
+    78.8s GET   https://www.google.com/xjs/_/js/k=xjs.hd.en.e3wS7roCkDI.2023.O/am=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgEAAAAIAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAAAAAAAAAAECBIAEAAAAAAAAAAAIAAAAAAEAAAAAABgAACAAIAACAADAAAAAAAAAAAAAAAAAAAAAAAhAIAAAAAEAAAAA_AMMMAIAAAAAAAAAAAAAgAgAAAAAAAAAAAsAAAAgEAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAFAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAgAAAAoAACAAACAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAIAQAAAAxAAAAAAAAAAAACAAAAAAHQABB5gSEEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAFsAspIAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEHoKAAAAAAAAYDE/d=0/dg=0/br=1/rs=ACT90oHlFGuAYi2XxsnPoLLOVRmLhG5xAA/m=sy23h,P10Owf,sy19s,gSZvdb,sy196,sy194,syox,sys1,CnSW2d,sy191,sy18y,sy18t,sy18s,sy190,nRwWne,sy193,fXO0xe
+    78.9s GET   https://www.google.com/xjs/_/js/k=xjs.hd.en.e3wS7roCkDI.2023.O/am=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgEAAAAIAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAAAAAAAAAAECBIAEAAAAAAAAAAAIAAAAAAEAAAAAABgAACAAIAACAADAAAAAAAAAAAAAAAAAAAAAAAhAIAAAAAEAAAAA_AMMMAIAAAAAAAAAAAAAgAgAAAAAAAAAAAsAAAAgEAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAFAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAgAAAAoAACAAACAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAIAQAAAAxAAAAAAAAAAAACAAAAAAHQABB5gSEEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAFsAspIAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEHoKAAAAAAAAYDE/d=0/dg=0/br=1/rs=ACT90oHlFGuAYi2XxsnPoLLOVRmLhG5xAA/m=lOO0Vd,sya4,P6sQOc
+    79.3s OPTIONS https://play.google.com/log
+    79.3s POST  https://chrome.cloudflare-dns.com/dns-query
+    79.3s POST  https://chrome.cloudflare-dns.com/dns-query
+    79.4s POST  https://play.google.com/log
+    98.2s GET   https://news.ycombinator.com/
+    98.2s POST  https://chrome.cloudflare-dns.com/dns-query
+    98.2s POST  https://chrome.cloudflare-dns.com/dns-query
+    98.5s GET   https://news.ycombinator.com/news.css
+    98.5s GET   https://news.ycombinator.com/y18.svg
+    98.5s GET   https://news.ycombinator.com/hn.js
+    98.5s POST  https://www.google.com/gen_204
+    98.5s GET   https://news.ycombinator.com/s.gif
+    98.6s GET   https://news.ycombinator.com/triangle.svg
+    98.7s GET   https://news.ycombinator.com/y18.svg
+| host | class | url_req | dns | sess | sample URL |
+|---|---|---|---|---|---|
+| chrome.cloudflare-dns.com | allowlisted | 34 | 79 | 3 | https://chrome.cloudflare-dns.com/dns-query |
+| de.wikipedia.org | allowlisted | 31 | 96 | 1 | https://de.wikipedia.org/w/load.php |
+| www.google.com | allowlisted | 30 | 53 | 2 | https://www.google.com/gen_204 |
+| news.ycombinator.com | allowlisted | 7 | 24 | 1 | https://news.ycombinator.com/y18.svg |
+| github.com | allowlisted | 3 | 13 | 1 | https://github.com/login |
+| example.com | allowlisted | 2 | 8 | 1 | https://example.com/this-page-does-not-exist-404 |
+| go-updater.brave.com | brave | 13 | 53 | 2 | https://go-updater.brave.com/extensions |
+| usage-ping.brave.com | brave | 1 | 7 | 1 | https://usage-ping.brave.com/1/usage/brave-core |
+| variations.brave.com | brave | 1 | 7 | 1 | https://variations.brave.com/seed |
+| github.githubassets.com | page-requested | 99 | 324 | 3 | https://github.githubassets.com/assets/react-e27d1b3e03961e68.js |
+| fonts.gstatic.com | page-requested | 6 | 20 | 1 | https://fonts.gstatic.com/s/googlesans/v29/4UaGrENHsxJlGDuGo1OIlL3Owp5eKQtG.woff2 |
+| upload.wikimedia.org | page-requested | 3 | 17 | 1 | https://upload.wikimedia.org/wikipedia/commons/9/91/Wikipedia-logo-v2-25-alt.svg |
+| www.gstatic.com | page-requested | 3 | 10 | 0 | https://www.gstatic.com/og/_/js/k=og.asy.en_US.RQWeQL4C_as.2019.O/rt=j/m=_ac,_awd,ada,lldp,qads,abld/exm=/d=1/ed=1/rs=AA2YrTuGbsx8J9y5y-8vfZToQEl93Ak1HQ |
+| api.github.com | page-requested | 2 | 9 | 2 | https://api.github.com/_private/browser/errors |
+| collector.github.com | page-requested | 2 | 8 | 1 | https://collector.github.com/github/collect |
+| meta.wikimedia.org | page-requested | 2 | 13 | 0 | https://meta.wikimedia.org/w/index.php |
+| ogads-pa.clients6.google.com | page-requested | 2 | 9 | 2 | https://ogads-pa.clients6.google.com/$rpc/google.internal.onegoogle.asyncdata.v1.AsyncDataService/GetAsyncData |
+| play.google.com | page-requested | 2 | 8 | 1 | https://play.google.com/log |
+| thumb.wikimedia.org | page-requested | 2 | 13 | 0 | https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ea/Disambig-dark.svg/60px-Disambig-dark.svg.png |
+| auth.wikimedia.org | page-requested | 1 | 9 | 0 | https://auth.wikimedia.org/metawiki/wiki/Special:CentralAutoLogin/checkLoggedIn |
+
+UNEXPECTED hosts: 3
+  ! brave go-updater.brave.com 13
+  ! brave usage-ping.brave.com 1
+  ! brave variations.brave.com 1

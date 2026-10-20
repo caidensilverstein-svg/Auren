@@ -1,0 +1,481 @@
+{
+ "api.github.com": {
+  "class": "page-requested",
+  "dns": 9,
+  "init_hosts": {
+   "github.com": 2
+  },
+  "initiators": {
+   "https://github.com": 2
+  },
+  "sample_urls": [
+   "https://api.github.com/_private/browser/errors",
+   "https://api.github.com/_private/browser/stats"
+  ],
+  "sessions": 2,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 1,
+   "NETWORK_QUALITY_ESTIMATOR": 2,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 2,
+   "SSL_CONNECT_JOB": 2,
+   "URL_REQUEST": 2
+  },
+  "url_requests": 2
+ },
+ "auth.wikimedia.org": {
+  "class": "page-requested",
+  "dns": 9,
+  "init_hosts": {
+   "de.wikipedia.org": 1
+  },
+  "initiators": {
+   "https://de.wikipedia.org": 1
+  },
+  "sample_urls": [
+   "https://auth.wikimedia.org/metawiki/wiki/Special:CentralAutoLogin/checkLoggedIn"
+  ],
+  "sessions": 0,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 2,
+   "NETWORK_QUALITY_ESTIMATOR": 2,
+   "NETWORK_SERVICE_HOST_RESOLVER": 1,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 1,
+   "SSL_CONNECT_JOB": 1,
+   "URL_REQUEST": 1
+  },
+  "url_requests": 1
+ },
+ "chrome.cloudflare-dns.com": {
+  "class": "allowlisted",
+  "dns": 79,
+  "init_hosts": {
+   "<browser>": 34
+  },
+  "initiators": {
+   "not an origin": 34
+  },
+  "sample_urls": [
+   "https://chrome.cloudflare-dns.com/dns-query"
+  ],
+  "sessions": 3,
+  "source_types": {
+   "DNS_OVER_HTTPS": 34,
+   "HOST_RESOLVER_IMPL_JOB": 2,
+   "NETWORK_QUALITY_ESTIMATOR": 68,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 3,
+   "SSL_CONNECT_JOB": 2
+  },
+  "url_requests": 34
+ },
+ "collector.github.com": {
+  "class": "page-requested",
+  "dns": 8,
+  "init_hosts": {
+   "github.com": 2
+  },
+  "initiators": {
+   "https://github.com": 2
+  },
+  "sample_urls": [
+   "https://collector.github.com/github/collect"
+  ],
+  "sessions": 1,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 1,
+   "NETWORK_QUALITY_ESTIMATOR": 2,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 2,
+   "SSL_CONNECT_JOB": 1,
+   "URL_REQUEST": 2
+  },
+  "url_requests": 2
+ },
+ "de.wikipedia.org": {
+  "class": "allowlisted",
+  "dns": 96,
+  "init_hosts": {
+   "<browser>": 1,
+   "de.wikipedia.org": 30
+  },
+  "initiators": {
+   "https://de.wikipedia.org": 30,
+   "not an origin": 1
+  },
+  "sample_urls": [
+   "https://de.wikipedia.org/w/load.php",
+   "https://de.wikipedia.org/wiki/Datenschutz",
+   "https://de.wikipedia.org/static/images/mobile/copyright/wikipedia-wordmark-en.svg",
+   "https://de.wikipedia.org/static/images/icons/wikipedia.png",
+   "https://de.wikipedia.org/static/images/mobile/copyright/wikipedia-tagline-de.svg"
+  ],
+  "sessions": 1,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 1,
+   "NETWORK_QUALITY_ESTIMATOR": 61,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 31,
+   "SSL_CONNECT_JOB": 1,
+   "URL_REQUEST": 31
+  },
+  "url_requests": 31
+ },
+ "example.com": {
+  "class": "allowlisted",
+  "dns": 8,
+  "init_hosts": {
+   "<browser>": 1,
+   "example.com": 1
+  },
+  "initiators": {
+   "https://example.com": 1,
+   "not an origin": 1
+  },
+  "sample_urls": [
+   "https://example.com/this-page-does-not-exist-404",
+   "https://example.com/s.js"
+  ],
+  "sessions": 1,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 1,
+   "NETWORK_QUALITY_ESTIMATOR": 4,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 1,
+   "URL_REQUEST": 2
+  },
+  "url_requests": 2
+ },
+ "fonts.gstatic.com": {
+  "class": "page-requested",
+  "dns": 20,
+  "init_hosts": {
+   "www.google.com": 6
+  },
+  "initiators": {
+   "https://www.google.com": 6
+  },
+  "sample_urls": [
+   "https://fonts.gstatic.com/s/googlesans/v29/4UaGrENHsxJlGDuGo1OIlL3Owp5eKQtG.woff2",
+   "https://fonts.gstatic.com/s/roboto/v18/KFOmCnqEu92Fr1Mu4mxKKTU1Kg.woff2",
+   "https://fonts.gstatic.com/s/roboto/v18/KFOlCnqEu92Fr1MmWUlfBBc4AMP6lQ.woff2"
+  ],
+  "sessions": 1,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 2,
+   "NETWORK_QUALITY_ESTIMATOR": 9,
+   "NETWORK_SERVICE_HOST_RESOLVER": 6,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 1,
+   "URL_REQUEST": 6
+  },
+  "url_requests": 6
+ },
+ "github.com": {
+  "class": "allowlisted",
+  "dns": 13,
+  "init_hosts": {
+   "<browser>": 1,
+   "github.com": 2
+  },
+  "initiators": {
+   "https://github.com": 2,
+   "not an origin": 1
+  },
+  "sample_urls": [
+   "https://github.com/login",
+   "https://github.com/manifest.json",
+   "https://github.com/u2f/login_fragment"
+  ],
+  "sessions": 1,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 1,
+   "NETWORK_QUALITY_ESTIMATOR": 6,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 3,
+   "SSL_CONNECT_JOB": 1,
+   "URL_REQUEST": 3
+  },
+  "url_requests": 3
+ },
+ "github.githubassets.com": {
+  "class": "page-requested",
+  "dns": 324,
+  "init_hosts": {
+   "github.com": 99
+  },
+  "initiators": {
+   "https://github.com": 99
+  },
+  "sample_urls": [
+   "https://github.githubassets.com/assets/react-e27d1b3e03961e68.js",
+   "https://github.githubassets.com/assets/react-compiler-runtime-4610bd6d3de9c049.js",
+   "https://github.githubassets.com/assets/scheduler-58b860b049ca307c.js",
+   "https://github.githubassets.com/assets/react-dom-e5fd46a22d5c4058.js",
+   "https://github.githubassets.com/assets/react-dom-client-1b4a3ee065998cea.js"
+  ],
+  "sessions": 3,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 2,
+   "NETWORK_QUALITY_ESTIMATOR": 198,
+   "NETWORK_SERVICE_HOST_RESOLVER": 99,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 16,
+   "SSL_CONNECT_JOB": 7,
+   "URL_REQUEST": 99
+  },
+  "url_requests": 99
+ },
+ "go-updater.brave.com": {
+  "class": "brave",
+  "dns": 53,
+  "init_hosts": {
+   "<browser>": 13
+  },
+  "initiators": {
+   "not an origin": 13
+  },
+  "sample_urls": [
+   "https://go-updater.brave.com/extensions"
+  ],
+  "sessions": 2,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 2,
+   "NETWORK_QUALITY_ESTIMATOR": 26,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 7,
+   "SSL_CONNECT_JOB": 14,
+   "URL_REQUEST": 13
+  },
+  "url_requests": 13
+ },
+ "meta.wikimedia.org": {
+  "class": "page-requested",
+  "dns": 13,
+  "init_hosts": {
+   "de.wikipedia.org": 2
+  },
+  "initiators": {
+   "https://de.wikipedia.org": 2
+  },
+  "sample_urls": [
+   "https://meta.wikimedia.org/w/index.php"
+  ],
+  "sessions": 0,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 2,
+   "NETWORK_QUALITY_ESTIMATOR": 4,
+   "NETWORK_SERVICE_HOST_RESOLVER": 2,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 2,
+   "SSL_CONNECT_JOB": 1,
+   "URL_REQUEST": 2
+  },
+  "url_requests": 2
+ },
+ "news.ycombinator.com": {
+  "class": "allowlisted",
+  "dns": 24,
+  "init_hosts": {
+   "<browser>": 1,
+   "news.ycombinator.com": 6
+  },
+  "initiators": {
+   "https://news.ycombinator.com": 6,
+   "not an origin": 1
+  },
+  "sample_urls": [
+   "https://news.ycombinator.com/y18.svg",
+   "https://news.ycombinator.com/",
+   "https://news.ycombinator.com/news.css",
+   "https://news.ycombinator.com/hn.js",
+   "https://news.ycombinator.com/s.gif"
+  ],
+  "sessions": 1,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 1,
+   "NETWORK_QUALITY_ESTIMATOR": 14,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 6,
+   "SSL_CONNECT_JOB": 1,
+   "URL_REQUEST": 7
+  },
+  "url_requests": 7
+ },
+ "ogads-pa.clients6.google.com": {
+  "class": "page-requested",
+  "dns": 9,
+  "init_hosts": {
+   "www.google.com": 2
+  },
+  "initiators": {
+   "https://www.google.com": 2
+  },
+  "sample_urls": [
+   "https://ogads-pa.clients6.google.com/$rpc/google.internal.onegoogle.asyncdata.v1.AsyncDataService/GetAsyncData"
+  ],
+  "sessions": 2,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 1,
+   "NETWORK_QUALITY_ESTIMATOR": 3,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 2,
+   "SSL_CONNECT_JOB": 1,
+   "URL_REQUEST": 2
+  },
+  "url_requests": 2
+ },
+ "play.google.com": {
+  "class": "page-requested",
+  "dns": 8,
+  "init_hosts": {
+   "www.google.com": 2
+  },
+  "initiators": {
+   "https://www.google.com": 2
+  },
+  "sample_urls": [
+   "https://play.google.com/log"
+  ],
+  "sessions": 1,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 1,
+   "NETWORK_QUALITY_ESTIMATOR": 3,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 1,
+   "SSL_CONNECT_JOB": 1,
+   "URL_REQUEST": 2
+  },
+  "url_requests": 2
+ },
+ "thumb.wikimedia.org": {
+  "class": "page-requested",
+  "dns": 13,
+  "init_hosts": {
+   "de.wikipedia.org": 2
+  },
+  "initiators": {
+   "https://de.wikipedia.org": 2
+  },
+  "sample_urls": [
+   "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ea/Disambig-dark.svg/60px-Disambig-dark.svg.png",
+   "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/ca/Wiki_Loves_Monuments_Logo_notext.svg/60px-Wiki_Loves_Monuments_Logo_notext.svg.png"
+  ],
+  "sessions": 0,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 2,
+   "NETWORK_QUALITY_ESTIMATOR": 4,
+   "NETWORK_SERVICE_HOST_RESOLVER": 2,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 2,
+   "SSL_CONNECT_JOB": 1,
+   "URL_REQUEST": 2
+  },
+  "url_requests": 2
+ },
+ "upload.wikimedia.org": {
+  "class": "page-requested",
+  "dns": 17,
+  "init_hosts": {
+   "de.wikipedia.org": 3
+  },
+  "initiators": {
+   "https://de.wikipedia.org": 3
+  },
+  "sample_urls": [
+   "https://upload.wikimedia.org/wikipedia/commons/9/91/Wikipedia-logo-v2-25-alt.svg",
+   "https://upload.wikimedia.org/wikipedia/commons/0/0d/Wikipedia-tagline-de-25.svg",
+   "https://upload.wikimedia.org/wikipedia/commons/9/96/Link-external-small-ltr-progressive.svg"
+  ],
+  "sessions": 1,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 2,
+   "NETWORK_QUALITY_ESTIMATOR": 6,
+   "NETWORK_SERVICE_HOST_RESOLVER": 3,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 1,
+   "SSL_CONNECT_JOB": 3,
+   "URL_REQUEST": 3
+  },
+  "url_requests": 3
+ },
+ "usage-ping.brave.com": {
+  "class": "brave",
+  "dns": 7,
+  "init_hosts": {
+   "<browser>": 1
+  },
+  "initiators": {
+   "not an origin": 1
+  },
+  "sample_urls": [
+   "https://usage-ping.brave.com/1/usage/brave-core"
+  ],
+  "sessions": 1,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 1,
+   "NETWORK_QUALITY_ESTIMATOR": 2,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 1,
+   "SSL_CONNECT_JOB": 1,
+   "URL_REQUEST": 1
+  },
+  "url_requests": 1
+ },
+ "variations.brave.com": {
+  "class": "brave",
+  "dns": 7,
+  "init_hosts": {
+   "<browser>": 1
+  },
+  "initiators": {
+   "not an origin": 1
+  },
+  "sample_urls": [
+   "https://variations.brave.com/seed"
+  ],
+  "sessions": 1,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 1,
+   "NETWORK_QUALITY_ESTIMATOR": 2,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 1,
+   "SSL_CONNECT_JOB": 1,
+   "URL_REQUEST": 1
+  },
+  "url_requests": 1
+ },
+ "www.google.com": {
+  "class": "allowlisted",
+  "dns": 53,
+  "init_hosts": {
+   "<browser>": 2,
+   "www.google.com": 28
+  },
+  "initiators": {
+   "https://www.google.com": 28,
+   "not an origin": 2
+  },
+  "sample_urls": [
+   "https://www.google.com/gen_204",
+   "https://www.google.com/xjs/_/js/k=xjs.hd.en.e3wS7roCkDI.2023.O/am=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAgEAAAAIAAAAAAAAAA",
+   "https://www.google.com/xjs/_/ss/k=xjs.hd.gz-drebomDs.L.B1.O/am=AAACAAAAAgAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQiAAAAAAAAAgAAUYMIAEAAAAAAA",
+   "https://www.google.com/",
+   "https://www.google.com/async/hpba"
+  ],
+  "sessions": 2,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 1,
+   "NETWORK_QUALITY_ESTIMATOR": 48,
+   "QUIC_SESSION_POOL_DIRECT_JOB": 2,
+   "URL_REQUEST": 30
+  },
+  "url_requests": 30
+ },
+ "www.gstatic.com": {
+  "class": "page-requested",
+  "dns": 10,
+  "init_hosts": {
+   "www.google.com": 3
+  },
+  "initiators": {
+   "https://www.google.com": 3
+  },
+  "sample_urls": [
+   "https://www.gstatic.com/og/_/js/k=og.asy.en_US.RQWeQL4C_as.2019.O/rt=j/m=_ac,_awd,ada,lldp,qads,abld/exm=/d=1/ed=1/rs=AA2YrTuGbsx8J9y5y-8vfZToQEl93Ak1HQ",
+   "https://www.gstatic.com/og/_/ss/k=og.asy.AJxojUGSPBk.L.W.O/m=ll_tdm,adcgm3,ll_fw,abld/excm=/d=1/ed=1/ct=zgms/rs=AA2YrTuGFRpKduKNm9VQnb3PWaoCmWEzEQ",
+   "https://www.gstatic.com/images/branding/searchlogo/ico/favicon.ico"
+  ],
+  "sessions": 0,
+  "source_types": {
+   "HOST_RESOLVER_IMPL_JOB": 1,
+   "NETWORK_QUALITY_ESTIMATOR": 6,
+   "NETWORK_SERVICE_HOST_RESOLVER": 3,
+   "URL_REQUEST": 3
+  },
+  "url_requests": 3
+ }
+}
