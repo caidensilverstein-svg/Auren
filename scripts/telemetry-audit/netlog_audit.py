@@ -169,19 +169,22 @@ def merge(results):
     return m
 
 def mark_page_requested(res, pats):
-    """A host is 'page-requested' when every URL request to it was initiated by
-    an allowlisted host (e.g. claude.ai side panel, a page the user opened) or
-    by another page-requested host (iframes, CDNs). Browser-initiated requests
-    ('<browser>') never qualify unless the host itself is allowlisted."""
+    """A host is 'page-requested' when it is reachable from an allowlisted host
+    through the initiator graph (claude.ai -> hcaptcha iframe -> its API, a page
+    the user opened -> its CDNs) AND no request to it was browser-initiated
+    ('<browser>').  Browser-initiated requests never qualify unless the host
+    itself is allowlisted, so Brave/Google service pings stay flagged."""
     good = {h for h, v in res.items() if v["class"] in ("allowlisted", "loopback")}
     changed = True
     while changed:
         changed = False
         for h, v in res.items():
-            if h in good:
+            if h in good or not v["url_requests"]:
                 continue
-            ih = v.get("init_hosts") or {}
-            if v["url_requests"] and ih and all(i in good for i in ih):
+            ih = {i for i in (v.get("init_hosts") or {}) if i != h}
+            if "<browser>" in (v.get("init_hosts") or {}):
+                continue
+            if ih & good:
                 v["class"] = "page-requested"
                 good.add(h)
                 changed = True
