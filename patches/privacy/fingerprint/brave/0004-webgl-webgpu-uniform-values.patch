@@ -1,0 +1,76 @@
+# 0004-webgl-webgpu-uniform-values
+# WebGL unmasked vendor/renderer = fixed policy pair; no impossible WebGL2 limit perturbation; WebGPU 
+# adapter vendor/architecture scrubbed at BALANCED too.
+# Apply in the brave/ repo root: git apply <this file>
+
+diff --git a/chromium_src/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc b/chromium_src/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+--- a/chromium_src/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
++++ b/chromium_src/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+@@ -49,20 +49,16 @@
+     case BraveFarblingLevel::OFF:
+       return original_script_value;
+     case BraveFarblingLevel::BALANCED:
+-      return base::FeatureList::IsEnabled(
+-                 blink::features::kWebGLBalancedFingerprintingProtection)
+-                 ? blink::WebGLAny(script_state, blink::String("Brave"))
+-                 : original_script_value;
+     case BraveFarblingLevel::MAXIMUM:
++      // Auren: one fixed, plausible ANGLE/Metal pair for every user instead of
++      // the real GPU string, the literal "Brave", or a random 8-char string.
++      (void)kUnmaskedVendorWebGL;
++      (void)kUnmaskedRendererWebGL;
+       return blink::WebGLAny(
+           script_state,
+-          blink::String(
+-              brave::BraveSessionCache::From(*(host->GetTopExecutionContext()))
+-                  .GenerateRandomString(
+-                      type == WebGLDebugRendererInfoType::VENDOR
+-                          ? kUnmaskedVendorWebGL
+-                          : kUnmaskedRendererWebGL,
+-                      8)));
++          blink::String(type == WebGLDebugRendererInfoType::VENDOR
++                            ? brave::auren_policy::kWebGlUnmaskedVendor
++                            : brave::auren_policy::kWebGlUnmaskedRenderer));
+     default:
+       return original_script_value;
+   }
+diff --git a/chromium_src/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc b/chromium_src/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc
+--- a/chromium_src/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc
++++ b/chromium_src/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc
+@@ -33,7 +33,8 @@
+             .MakePseudoRandomGenerator();
+     prng.discard(discard);
+     if (prng() % 2 != 0) {
+-      value = value - 1;
++      // Auren: deliberately unmodified. Reporting 31 for a limit the GPU
++      // reports as 32 (varying per site) is an impossible value.
+     }
+   }
+   return WebGLAny(script_state, value);
+@@ -52,7 +53,8 @@
+             .MakePseudoRandomGenerator();
+     prng.discard(discard);
+     if (prng() % 2 != 0) {
+-      value = value - 1;
++      // Auren: deliberately unmodified. Reporting 31 for a limit the GPU
++      // reports as 32 (varying per site) is an impossible value.
+     }
+   }
+   return WebGLAny(script_state, value);
+diff --git a/chromium_src/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc b/chromium_src/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
+--- a/chromium_src/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
++++ b/chromium_src/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
+@@ -35,10 +35,9 @@
+       case BraveFarblingLevel::OFF:
+         return s;
+       case BraveFarblingLevel::BALANCED:
+-        return base::FeatureList::IsEnabled(
+-                   blink::features::kWebGLBalancedFingerprintingProtection)
+-                   ? String()
+-                   : s;
++        // Auren: scrub vendor/architecture/device unconditionally (upstream only
++        // does so behind kWebGLBalancedFingerprintingProtection, off by default).
++        return String();
+       case BraveFarblingLevel::MAXIMUM:
+         return String();
+     }

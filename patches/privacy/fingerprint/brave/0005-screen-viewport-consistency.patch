@@ -1,0 +1,96 @@
+# 0005-screen-viewport-consistency
+# window.outer*/screenX/Y, matchMedia(device-*), screen.* all equal the viewport (no random 0..8 
+# offsets, no menu-bar geometry); colorDepth 24.
+# Apply in the brave/ repo root: git apply <this file>
+
+diff --git a/chromium_src/third_party/blink/renderer/core/frame/local_dom_window.cc b/chromium_src/third_party/blink/renderer/core/frame/local_dom_window.cc
+--- a/chromium_src/third_party/blink/renderer/core/frame/local_dom_window.cc
++++ b/chromium_src/third_party/blink/renderer/core/frame/local_dom_window.cc
+@@ -65,7 +65,7 @@
+   auto* top_window = DynamicTo<LocalDOMWindow>(top());
+   return BlockScreenFingerprinting(context) && top_window
+              ? FarbleInteger(context, brave::FarbleKey::kWindowInnerWidth,
+-                             top_window->innerWidth(), 0, 8)
++                             top_window->innerWidth(), 0, 0)
+              : outerWidth_ChromiumImpl();
+ }
+ 
+@@ -76,7 +76,7 @@
+   auto* top_window = DynamicTo<LocalDOMWindow>(top());
+   return BlockScreenFingerprinting(context) && top_window
+              ? FarbleInteger(context, brave::FarbleKey::kWindowInnerHeight,
+-                             top_window->innerHeight(), 0, 8)
++                             top_window->innerHeight(), 0, 0)
+              : outerHeight_ChromiumImpl();
+ }
+ 
+@@ -84,7 +84,7 @@
+   // Prevent fingerprinter use of screenX, screenLeft by returning value near 0:
+   ExecutionContext* context = GetExecutionContext();
+   return BlockScreenFingerprinting(context)
+-             ? FarbleInteger(context, brave::FarbleKey::kWindowScreenX, 0, 0, 8)
++             ? FarbleInteger(context, brave::FarbleKey::kWindowScreenX, 0, 0, 0)
+              : screenX_ChromiumImpl();
+ }
+ 
+@@ -92,7 +92,7 @@
+   // Prevent fingerprinter use of screenY, screenTop by returning value near 0:
+   ExecutionContext* context = GetExecutionContext();
+   return BlockScreenFingerprinting(context)
+-             ? FarbleInteger(context, brave::FarbleKey::kWindowScreenY, 0, 0, 8)
++             ? FarbleInteger(context, brave::FarbleKey::kWindowScreenY, 0, 0, 0)
+              : screenY_ChromiumImpl();
+ }
+ 
+diff --git a/chromium_src/third_party/blink/renderer/core/css/media_values.cc b/chromium_src/third_party/blink/renderer/core/css/media_values.cc
+--- a/chromium_src/third_party/blink/renderer/core/css/media_values.cc
++++ b/chromium_src/third_party/blink/renderer/core/css/media_values.cc
+@@ -16,7 +16,7 @@
+     return top_frame && brave::BlockScreenFingerprinting(context, early)       \
+                ? brave::FarbleInteger(context,                                 \
+                                       brave::FarbleKey::kWindowInnerWidth,     \
+-                                      CalculateViewportWidth(top_frame), 0, 8) \
++                                      CalculateViewportWidth(top_frame), 0, 0) \
+                : CalculateDeviceWidth_ChromiumImpl(frame);                     \
+   }                                                                            \
+   int MediaValues::CalculateDeviceWidth_ChromiumImpl(__VA_ARGS__)
+@@ -28,7 +28,7 @@
+     return top_frame && brave::BlockScreenFingerprinting(context, early)   \
+                ? brave::FarbleInteger(                                     \
+                      context, brave::FarbleKey::kWindowInnerHeight,        \
+-                     CalculateViewportHeight(top_frame), 0, 8)             \
++                     CalculateViewportHeight(top_frame), 0, 0)             \
+                : CalculateDeviceHeight_ChromiumImpl(frame);                \
+   }                                                                        \
+   int MediaValues::CalculateDeviceHeight_ChromiumImpl(__VA_ARGS__)
+diff --git a/third_party/blink/renderer/core/farbling/brave_session_cache.cc b/third_party/blink/renderer/core/farbling/brave_session_cache.cc
+--- a/third_party/blink/renderer/core/farbling/brave_session_cache.cc
++++ b/third_party/blink/renderer/core/farbling/brave_session_cache.cc
+@@ -227,7 +227,7 @@
+     return true_screen_coordinate;
+   }
+   double zoom_factor = frame->LayoutZoomFactor();
+-  return FarbleInteger(context, key, zoom_factor * client_coordinate, 0, 8);
++  return FarbleInteger(context, key, zoom_factor * client_coordinate, 0, 0);
+ }
+ 
+ BraveSessionCache::BraveSessionCache(ExecutionContext& context)
+diff --git a/chromium_src/third_party/blink/renderer/core/page/chrome_client_impl.cc b/chromium_src/third_party/blink/renderer/core/page/chrome_client_impl.cc
+--- a/chromium_src/third_party/blink/renderer/core/page/chrome_client_impl.cc
++++ b/chromium_src/third_party/blink/renderer/core/page/chrome_client_impl.cc
+@@ -53,6 +53,15 @@
+       break;
+     }
+   }
++  // Auren: report the viewport (which every page can read anyway through
++  // innerWidth/innerHeight) instead of a bucketed screen so that screen.*,
++  // outer*, and matchMedia(device-width/height) agree; no display size,
++  // menu-bar or dock geometry leaks.
++  if (outerWidth > 0 && outerHeight > 0) {
++    screen_info.rect = gfx::Rect(outerWidth, outerHeight);
++  }
++  screen_info.depth = 24;
++  screen_info.depth_per_component = 8;
+   screen_info.available_rect = screen_info.rect;
+   screen_info.is_extended = false;
+   screen_info.is_primary = false;
