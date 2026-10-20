@@ -38,6 +38,7 @@ const PAGE = `<!doctype html><title>Fixture Page</title>
 <button id="b" onclick="window.n=(window.n||0)+1;this.textContent='clicked '+window.n">go</button>
 <input id="c" type="checkbox" aria-label="agree" onchange="window.toggles=(window.toggles||0)+1">
 <input id="t" type="text" placeholder="name">
+<input id="p" type="password" aria-label="pw" value="hunter2">
 </main>`;
 
 let chrome, fixture, mcp, chromeDir, homeDir, ports = {};
@@ -156,6 +157,14 @@ test('fill sets an input value', { skip }, async () => {
   await c.close();
 });
 
+test('password values are redacted in snapshots', { skip }, async () => {
+  const c = await connect();
+  const out = await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/` });
+  assert.doesNotMatch(out, /hunter2/);
+  assert.match(out, /type="password" val="\[redacted\]"/);
+  await c.close();
+});
+
 test('unknown tab_id is an error, not a silent fallback to another tab', { skip }, async () => {
   const c = await connect();
   assert.match(await call(c, 'browser_snapshot', { tab_id: 'DOES-NOT-EXIST' }), /No open tab with id/);
@@ -165,7 +174,9 @@ test('unknown tab_id is an error, not a silent fallback to another tab', { skip 
 test('browsing history records the real page title and is searchable', { skip }, async () => {
   const c = await connect();
   await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/?hist=1` });
-  await waitFor(async () => /Fixture Page/.test(await call(c, 'browser_search_history', { query: 'hist', limit: 5 })), 5000);
+  await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/page?token=SECRET#frag` });
+  await waitFor(async () => /Fixture Page/.test(await call(c, 'browser_search_history', { query: 'page', limit: 5 })), 5000);
+  assert.doesNotMatch(await call(c, 'browser_search_history', { query: '', limit: 20 }), /SECRET|frag/);
   assert.match(await call(c, 'browser_get_session_context', { last_minutes: 5 }), /Fixture Page/);
   await c.close();
 });

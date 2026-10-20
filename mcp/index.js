@@ -180,7 +180,10 @@ class SessionManager {
     let lastVisitId = null;
     client.Page.on('frameNavigated', ({ frame }) => {
       if (frame.parentId) return;
-      const url = frame.url;
+      // Query strings and fragments routinely carry session tokens and search
+      // terms; the path memory only needs where the user went.
+      let url = frame.url;
+      try { const u = new URL(frame.url); u.search = ''; u.hash = ''; url = u.toString(); } catch {}
       if (!url || url === 'about:blank' || url.startsWith('chrome://')) return;
       try {
         // The title is not known yet; it is filled in on loadEventFired below.
@@ -378,7 +381,7 @@ function ex(el){
   if(el.href)a.href=el.href.slice(0,120);
   const ty=el.type;
   if(ty&&!['text','hidden'].includes(ty))a.type=ty;
-  if(el.value&&!['button','submit','reset','a'].includes(tg))a.val=String(el.value).slice(0,50);
+  if(el.value&&!['button','submit','reset','a'].includes(tg))a.val=(ty==='password')?'[redacted]':String(el.value).slice(0,50);
   if(ty==='checkbox'||ty==='radio')a.checked=el.checked;
   if(el.disabled)a.disabled=true;
   const exp=el.getAttribute('aria-expanded');
