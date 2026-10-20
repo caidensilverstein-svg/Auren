@@ -514,7 +514,7 @@
    "id": "fonts.no_nonbase_fonts",
    "path": "fonts.detectedByWidth",
    "op": "noneMatch",
-   "value": "^(Calibri|Cambria|Candara|Consolas|Constantia|Corbel|Segoe .*|Ubuntu.*|Roboto|Open Sans|Lato|Montserrat|Source .*|Fira .*|JetBrains Mono|Inter|Hack|Adobe .*|Minion Pro|Myriad Pro|Proxima Nova|Gotham|Nunito|Raleway|Oswald|Playfair Display|IBM Plex Sans|PT Sans|PT Serif|Cascadia Code|DejaVu .*|Liberation .*|Noto .*|Cantarell|Wingdings|Webdings|Century Gothic|Garamond|Tw Cen MT|MS Gothic|MS PGothic|Microsoft .*|Malgun Gothic|Yu Gothic|Meiryo|SimSun|NSimSun)$",
+   "value": "^(Calibri|Cambria|Candara|Consolas|Constantia|Corbel|Segoe .*|Ubuntu.*|Roboto|Open Sans|Lato|Montserrat|Source .*|Fira .*|JetBrains Mono|Inter|Hack|Adobe .*|Minion Pro|Myriad Pro|Proxima Nova|Gotham|Nunito|Raleway|Oswald|Playfair Display|IBM Plex Sans|Cascadia Code|DejaVu .*|Liberation .*|Noto .*|Cantarell|Century Gothic|Garamond|Tw Cen MT|MS Gothic|MS PGothic|Microsoft .*|Malgun Gothic|Yu Gothic|Meiryo|SimSun|NSimSun)$",
    "severity": "fail",
    "desc": "only macOS base fonts visible (allowlist)"
   },

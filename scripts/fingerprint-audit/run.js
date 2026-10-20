@@ -102,8 +102,8 @@ async function main() {
   const c2 = first.surfaces.canvas2d && first.surfaces.canvas2d.data || {};
   const metrics = {
     'canvas noise on uniform fill (diff pixels / 4096)': c2.noiseUniformFill && c2.noiseUniformFill.diffPx,
-    'canvas majority-vote recovery (WWW25 attack): bytes recovered != single noisy read': c2.voteRecoveredVsSingleDiffBytes,
-    'canvas vote-recovered hash (equal across sites => attacker can strip noise and link)': c2.voteRecoveredHash,
+    'WWW25 majority-vote attack: bytes that differ between two marker-varied canvases (>0 = noise is content-keyed)': c2.voteCanvasesDifferBytes,
+    'WWW25 majority-vote attack: bytes the vote removed vs a single read (>0 = noise stripped)': c2.voteRecoveredVsSingleDiffBytes,
     'perf.now min delta (ms)': first.surfaces.timing && first.surfaces.timing.volatile && first.surfaces.timing.volatile.perfNowMinDeltaMs,
     'collection duration (ms)': first.durationMs,
   };

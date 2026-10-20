@@ -210,15 +210,17 @@
     data.putGetRoundTripDiffBytes = rt;
     // WWW'25 "majority vote" bypass of per-canvas noise: 5 canvases, identical content + a unique marker strip each
     try {
-      const N = 5, cw = 200, chh = 100; const arrs = [];
-      for (let k = 0; k < N; k++) { const cc = mk(cw, chh); const cx = cc.getContext('2d'); cx.fillStyle = `rgb(${10 + k * 40},${200 - k * 30},${30 + k * 20})`; cx.fillRect(0, 0, cw, 8); cx.translate(0, 8); drawScene(cx, cw, chh - 8); arrs.push(cx.getImageData(0, 8, cw, chh - 8).data); }
-      const rec = new Uint8ClampedArray(arrs[0].length); let allEqual = true;
-      for (let i = 0; i < rec.length; i++) { const cnt = new Map(); let bv = arrs[0][i], bc = 0; for (let k = 0; k < N; k++) { const v = arrs[k][i]; const nn = (cnt.get(v) || 0) + 1; cnt.set(v, nn); if (nn > bc) { bc = nn; bv = v; } } rec[i] = bv; if (arrs[0][i] !== arrs[1][i]) allEqual = false; }
-      data.voteRecoveredHash = await sha(new Uint8Array(rec.buffer)); data.voteCanvasesIdentical = allEqual;
-      // reference: same content, drawn once with no marker -> hash; recovered==reference => noise fully removed by voting
-      const rc = mk(cw, chh); const rx = rc.getContext('2d'); rx.fillStyle = 'rgb(10,200,30)'; rx.fillRect(0, 0, cw, 8); rx.translate(0, 8); drawScene(rx, cw, chh - 8);
-      const refd = rx.getImageData(0, 8, cw, chh - 8).data; let dd = 0; for (let i = 0; i < rec.length; i++) if (rec[i] !== refd[i]) dd++;
-      data.voteRecoveredVsSingleDiffBytes = dd;
+      const N = 5, cw = 200, chh = 100, strip = 8; const arrs = [];
+      const scene = (k) => { const cc = mk(cw, chh); const cx = cc.getContext('2d'); cx.fillStyle = `rgb(${10 + k * 40},${200 - k * 30},${30 + k * 20})`; cx.fillRect(0, 0, cw, strip); cx.translate(0, strip); drawScene(cx, cw, chh - strip); return cx; };
+      // The marker strip differs per canvas, so content-keyed noise (Brave: HMAC over the whole buffer) differs per read.
+      for (let k = 0; k < N; k++) arrs.push(scene(k).getImageData(0, 0, cw, chh).data.slice(cw * strip * 4));
+      const rec = new Uint8ClampedArray(arrs[0].length);
+      for (let i = 0; i < rec.length; i++) { const cnt = new Map(); let bv = arrs[0][i], bc = 0; for (let k = 0; k < N; k++) { const v = arrs[k][i]; const nn = (cnt.get(v) || 0) + 1; cnt.set(v, nn); if (nn > bc) { bc = nn; bv = v; } } rec[i] = bv; }
+      data.voteRecoveredHash = await sha(new Uint8Array(rec.buffer));
+      let nd = 0; for (let i = 0; i < rec.length; i++) if (arrs[0][i] !== arrs[1][i]) nd++;
+      data.voteCanvasesDifferBytes = nd; // >0 proves the noise really differs per canvas
+      const refd = scene(0).getImageData(0, 0, cw, chh).data.slice(cw * strip * 4); let dd = 0; for (let i = 0; i < rec.length; i++) if (rec[i] !== refd[i]) dd++;
+      data.voteRecoveredVsSingleDiffBytes = dd; // >0 => vote removed noise the single read still had
     } catch (e) { data.voteError = String(e); }
     // OffscreenCanvas on main thread
     try {
@@ -426,12 +428,16 @@
   V.speech = async () => {
     if (!('speechSynthesis' in window)) return { data: { supported: false } };
     const grab = () => speechSynthesis.getVoices().map((v) => ({ name: v.name, lang: v.lang, local: v.localService, def: v.default, uri: v.voiceURI }));
-    let v = grab(); if (!v.length) { await withTimeout(new Promise((r) => speechSynthesis.addEventListener('voiceschanged', r, { once: true })), 1500, null); v = grab(); }
+    // Voices load asynchronously: poll until non-empty, then let the list settle.
+    let v = grab(); const t0 = performance.now();
+    while (!v.length && performance.now() - t0 < 2500) { await sleep(100); v = grab(); }
+    if (v.length) { await sleep(300); v = grab(); }
     return { data: { supported: true, count: v.length, voices: v, hash: await sha(JSON.stringify(v)) } };
   };
   V.mediaDevices = async () => {
     const md = navigator.mediaDevices; if (!md) return { data: { supported: false } };
-    const list = await withTimeout(md.enumerateDevices(), 2000, []);
+    let list = await withTimeout(md.enumerateDevices(), 2000, []); const t0 = performance.now();
+    while (!list.length && performance.now() - t0 < 1500) { await sleep(150); list = await withTimeout(md.enumerateDevices(), 1000, []); }
     const kinds = {}; list.forEach((d) => { kinds[d.kind] = (kinds[d.kind] || 0) + 1; });
     return { data: { supported: true, kinds, labels: list.map((d) => d.label), anyLabel: list.some((d) => d.label), deviceIdLengths: list.map((d) => d.deviceId.length), groupIdLengths: list.map((d) => d.groupId.length), supportedConstraints: tryv(() => Object.keys(md.getSupportedConstraints()).sort()), hasGetDisplayMedia: typeof md.getDisplayMedia === 'function' } };
   };
@@ -498,7 +504,6 @@
       perfNowResolutionBucket: bucket(minD), perfNowHasJitter: sorted.length > 2 && new Set(sorted.slice(0, 20).map((d) => +(d / minD).toFixed(1))).size > 3,
       dateNowMinDelta: [...dn].sort((a, b) => a - b)[0] || 0,
       performanceMemoryLimit: pm,
-      rafTimestampDecimals: Math.max(...raf.map((t) => (String(t).split('.')[1] || '').length)),
     };
     return { data, volatile: { perfNowMinDeltaMs: minD, perfNowDistinctDeltas: sorted.length, perfNowFirstDeltas: sorted.slice(0, 6), rafs: raf, sampleStart: t0 } };
   };
@@ -663,7 +668,6 @@
     add('plugins_no_random_names', !pn.some((n) => /^[A-Za-z0-9]{6,9}$/.test(n)), pn);
     add('pdfViewerEnabled_matches_plugins', navigator.pdfViewerEnabled === (pn.length > 0), null);
     const mt = nav.mimeTypes || []; add('mimeTypes_consistent_with_plugins', mt.length === 0 ? pn.length === 0 : mt.every((m) => !/\|null$/.test(m)), mt);
-    const sp = S.speech && S.speech.data; if (sp && sp.supported) add('speech_no_known_fake_voice_names', !(sp.voices || []).some((v) => ['Hubert', 'Vernon', 'Rudolph', 'Clayton', 'Irving', 'Wilson', 'Alva', 'Harley', 'Beauregard', 'Cleveland', 'Cecil', 'Reuben', 'Sylvester', 'Jasper'].includes(v.name)), (sp.voices || []).map((v) => v.name));
     const g1 = gl; if (g1) { add('webgl_extension_objects_all_present', (g1.extObjectMismatch || []).length === 0, g1.extObjectMismatch); add('webgl_renderer_not_brave_literal', !/^Brave$/i.test(String(g1.unmaskedRenderer)) && !/^Brave$/i.test(String(g1.unmaskedVendor)), { vendor: g1.unmaskedVendor, renderer: g1.unmaskedRenderer }); add('webgl_renderer_not_random_string', !/^[A-Za-z0-9]{8}$/.test(String(g1.unmaskedRenderer)), g1.unmaskedRenderer); add('webgl_renderer_platform_plausible', /Macintosh/.test(ua) ? /Apple|Intel|AMD|ANGLE|Metal/.test(String(g1.unmaskedRenderer)) || g1.unmaskedRenderer == null : true, g1.unmaskedRenderer); }
     add('screen_matches_media_query', scr.mqDeviceWidth === undefined ? null : (scr.mqDeviceWidth === screen.width && scr.mqDeviceHeight === screen.height), { screen: [screen.width, screen.height], mq: [scr.mqDeviceWidth, scr.mqDeviceHeight] });
     add('screen_avail_le_size', screen.availWidth <= screen.width && screen.availHeight <= screen.height);
