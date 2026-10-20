@@ -201,7 +201,7 @@ def main():
     ap.add_argument("--ignore-ip-only", action="store_true",
                     help="do not fail on bare-IP TCP connects (name unknown)")
     a = ap.parse_args()
-    pats = load_allowlist(a.allowlist, [x.lower() for x in a.allow_host])
+    pats = load_allowlist(a.allowlist, [y.strip().lower() for x in a.allow_host for y in x.split(",") if y.strip()])
     a.pats = pats
     try:
         res = merge([analyze(p, pats) for p in a.netlogs])
