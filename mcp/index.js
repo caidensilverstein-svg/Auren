@@ -6,6 +6,8 @@ import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import crypto from 'crypto';
+import Database from 'better-sqlite3';
 
 (function loadEnv() {
   try {
@@ -19,9 +21,26 @@ import os from 'os';
   } catch (_) {}
 })();
 
-const PORT = 3012;
+const PORT = Number(process.env.AUREN_MCP_PORT) || 3012;
 const KEY = process.env.AUREN_MCP_KEY;
-const MAC_CDP = { host: '10.8.0.3', port: 9223 };
+const MAC_CDP = {
+  host: process.env.AUREN_CDP_HOST || '10.8.0.3',
+  port: Number(process.env.AUREN_CDP_PORT) || 9223
+};
+
+// Fail closed: without a key the endpoint would be an unauthenticated remote
+// browser-control API (js execution, form fill, screenshots of logged-in tabs).
+if (!KEY && process.env.AUREN_MCP_ALLOW_NO_KEY !== '1') {
+  console.error('AUREN_MCP_KEY is not set; refusing to start an unauthenticated MCP server.');
+  process.exit(1);
+}
+
+function keyMatches(candidate) {
+  if (typeof candidate !== 'string') return false;
+  const a = crypto.createHash('sha256').update(candidate).digest();
+  const b = crypto.createHash('sha256').update(KEY).digest();
+  return crypto.timingSafeEqual(a, b);
+}
 
 // --- Negotiated AI permissions (#10) ---
 const PERMS_PATH = path.join(os.homedir(), '.auren', 'agent_permissions.json');
@@ -54,6 +73,26 @@ function checkPermission(action) {
   if (p.trust_level === 'trusted') return { allowed: true };
   return { allowed: false, reason: `Action '${action}' requires user approval. Use 'browser_set_permission' to allow it for this session.` };
 }
+
+// --- Browsing path memory (#12) ---
+const HISTORY_DB_PATH = path.join(os.homedir(), '.auren', 'history.db');
+fs.mkdirSync(path.dirname(HISTORY_DB_PATH), { recursive: true });
+const historyDb = new Database(HISTORY_DB_PATH);
+historyDb.exec(`
+  CREATE TABLE IF NOT EXISTS visits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT NOT NULL,
+    title TEXT,
+    visited_at INTEGER NOT NULL,
+    time_spent_ms INTEGER,
+    scroll_depth_pct INTEGER,
+    tab_id TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_visits_url ON visits(url);
+  CREATE INDEX IF NOT EXISTS idx_visits_visited_at ON visits(visited_at);
+  CREATE VIRTUAL TABLE IF NOT EXISTS visits_fts USING fts5(url, title, content='visits', content_rowid='id');
+`);
+
 
 
 // --- Session state ---
@@ -88,7 +127,15 @@ function withTimeout(promise, ms, label) {
 async function getTarget(tabId) {
   const targets = await withTimeout(CDP.List(MAC_CDP), CONNECT_ATTEMPT_TIMEOUT_MS, 'CDP.List');
   const pages = targets.filter(t => t.type === 'page');
-  if (tabId) return pages.find(t => t.id === tabId) || pages[0];
+  if (tabId) {
+    const match = pages.find(t => t.id === tabId);
+    if (!match) {
+      const err = new Error(`No open tab with id ${tabId}; call browser_get_tabs for current ids`);
+      err.noRetry = true;
+      throw err;
+    }
+    return match;
+  }
   return pages[0];
 }
 
@@ -130,6 +177,40 @@ class SessionManager {
     await client.Page.enable();
     await client.Runtime.enable();
 
+    let lastVisitId = null;
+    client.Page.on('frameNavigated', ({ frame }) => {
+      if (frame.parentId) return;
+      // Query strings and fragments routinely carry session tokens and search
+      // terms; the path memory only needs where the user went.
+      let url = frame.url;
+      try { const u = new URL(frame.url); u.search = ''; u.hash = ''; url = u.toString(); } catch {}
+      if (!url || url === 'about:blank' || url.startsWith('chrome://')) return;
+      try {
+        // The title is not known yet; it is filled in on loadEventFired below.
+        const info = historyDb.prepare('INSERT INTO visits (url, title, visited_at, tab_id) VALUES (?, ?, ?, ?)')
+          .run(url, '', Date.now(), target.id);
+        historyDb.prepare('INSERT INTO visits_fts (rowid, url, title) VALUES (?, ?, ?)')
+          .run(info.lastInsertRowid, url, '');
+        lastVisitId = info.lastInsertRowid;
+      } catch (e) {
+        console.error('history write failed:', e.message);
+      }
+    });
+    client.Page.on('loadEventFired', async () => {
+      if (!lastVisitId) return;
+      const id = lastVisitId;
+      try {
+        const r = await client.Runtime.evaluate({ expression: 'document.title', returnByValue: true });
+        const title = String(r?.result?.value ?? '').slice(0, 200);
+        if (!title) return;
+        historyDb.prepare('UPDATE visits SET title = ? WHERE id = ?').run(title, id);
+        // external-content FTS5 table: re-index the row with the new title
+        const row = historyDb.prepare('SELECT url FROM visits WHERE id = ?').get(id);
+        historyDb.prepare("INSERT INTO visits_fts (visits_fts, rowid, url, title) VALUES ('delete', ?, ?, ?)").run(id, row.url, '');
+        historyDb.prepare('INSERT INTO visits_fts (rowid, url, title) VALUES (?, ?, ?)').run(id, row.url, title);
+      } catch (_) { /* tab may have closed; title stays blank */ }
+    });
+
     // auto-evict on disconnect so a dropped socket does not linger in the pool
     client.on('disconnect', () => this._sessions.delete(target.id));
 
@@ -146,6 +227,7 @@ class SessionManager {
         return (await this.get(tabId)) ?? (await this.open(tabId));
       } catch (e) {
         lastErr = e;
+        if (e.noRetry) throw e;
         this._sessions.delete(tabId);
         if (i < delays.length) await new Promise(r => setTimeout(r, delays[i]));
       }
@@ -299,7 +381,7 @@ function ex(el){
   if(el.href)a.href=el.href.slice(0,120);
   const ty=el.type;
   if(ty&&!['text','hidden'].includes(ty))a.type=ty;
-  if(el.value&&!['button','submit','reset','a'].includes(tg))a.val=String(el.value).slice(0,50);
+  if(el.value&&!['button','submit','reset','a'].includes(tg))a.val=(ty==='password')?'[redacted]':String(el.value).slice(0,50);
   if(ty==='checkbox'||ty==='radio')a.checked=el.checked;
   if(el.disabled)a.disabled=true;
   const exp=el.getAttribute('aria-expanded');
@@ -399,6 +481,16 @@ function buildServer() {
     inputSchema: { url: z.string(), tab_id: z.string().optional() }
   }, async ({ url, tab_id }) => {
     try {
+      const perm = checkPermission('navigation');
+      if (!perm.allowed) return { content: [{ type: 'text', text:
+`<permission_denied>${perm.reason}</permission_denied>` }] };
+      // javascript:/data:/file: URLs would run script or read local files
+      // while bypassing the js_execute permission gate.
+      let parsed;
+      try { parsed = new URL(url); } catch { parsed = null; }
+      if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) {
+        return { content: [{ type: 'text', text: `<error tool="browser_navigate">Only http(s) URLs are allowed</error>` }] };
+      }
       return await withCDP(tab_id, async (client, target) => {
         await client.Page.navigate({ url });
         await client.Page.loadEventFired().catch(() => {});
@@ -442,29 +534,24 @@ function buildServer() {
 
         // FIX 1: capture URL before action — check after to detect any navigation,
         // including form submissions and JS-triggered navigations, not just <a> clicks
-        const state = getTabState(target.id);
-        const prevUrl = state.url;
+        // Read the live URL rather than the last snapshot's, which is empty
+        // before the first snapshot and would report a bogus navigation.
+        const prevUrl = (await client.Runtime.evaluate({ expression: 'location.href', returnByValue: true }))?.result?.value || '';
 
-        if (el.href && el.tag === 'a') {
+        if (el.href && el.tag === 'a' && /^https?:/i.test(el.href)) {
           await client.Page.navigate({ url: el.href });
           await client.Page.loadEventFired().catch(() => {});
           await new Promise(r => setTimeout(r, 400));
         } else {
-          // Use JS .click() — fires native events including form submit, unlike raw mouse events
-          await client.Runtime.evaluate({ expression: `(function(){const el=document.querySelector(\${JSON.stringify(resolved)});if(el)el.click();})()` });
+          // Real pointer events only. (A JS .click() followed by a mouse click
+          // would activate toggles/checkboxes twice and undo them.)
+          await client.Input.dispatchMouseEvent({ type: 'mousePressed', x: el.x, y: el.y, button: 'left', clickCount: 1 });
+          await client.Input.dispatchMouseEvent({ type: 'mouseReleased', x: el.x, y: el.y, button: 'left', clickCount: 1 });
           await new Promise(r => setTimeout(r, 350));
-          // Check if JS click triggered a navigation
           const urlCheck = await client.Runtime.evaluate({ expression: 'location.href', returnByValue: true });
-          const currentUrl = urlCheck?.result?.value || '';
-          if (currentUrl !== prevUrl) {
-            // Navigation detected — wait for it to settle
+          if ((urlCheck?.result?.value || '') !== prevUrl) {
             await client.Page.loadEventFired().catch(() => {});
             await new Promise(r => setTimeout(r, 300));
-          } else {
-            // No navigation yet — also try mouse events for elements that need pointer interaction
-            await client.Input.dispatchMouseEvent({ type: 'mousePressed', x: el.x, y: el.y, button: 'left', clickCount: 1 });
-            await client.Input.dispatchMouseEvent({ type: 'mouseReleased', x: el.x, y: el.y, button: 'left', clickCount: 1 });
-            await new Promise(r => setTimeout(r, 200));
           }
         }
 
@@ -863,6 +950,67 @@ function buildServer() {
     }
   });
 
+  server.registerTool('browser_search_history', {
+    description: 'Search your Auren browsing history by keyword. Returns matching URLs with titles and timestamps.',
+    inputSchema: {
+      query: z.string(),
+      limit: z.number().int().min(1).max(50).default(10),
+      since_hours: z.number().optional(),
+    }
+  }, async ({ query, limit, since_hours }) => {
+    try {
+      let rows;
+      const since = since_hours ? Date.now() - since_hours * 3600_000 : 0;
+      if (query.trim()) {
+        const phrase = '"' + query.replace(/"/g, '""') + '"';
+        rows = historyDb.prepare(`
+          SELECT v.url, v.title, v.visited_at, v.time_spent_ms
+          FROM visits_fts f
+          JOIN visits v ON v.id = f.rowid
+          WHERE visits_fts MATCH ? AND v.visited_at >= ?
+          ORDER BY v.visited_at DESC
+          LIMIT ?
+        `).all(phrase, since, limit);
+      } else {
+        rows = historyDb.prepare(`
+          SELECT url, title, visited_at, time_spent_ms FROM visits
+          WHERE visited_at >= ?
+          ORDER BY visited_at DESC LIMIT ?
+        `).all(since, limit);
+      }
+      if (!rows.length) return { content: [{ type: 'text', text: 
+`No history found matching that query.` }] };
+      const formatted = rows.map(r =>
+`${new Date(r.visited_at).toISOString()} — ${r.title || '(no title)'}
+  ${r.url}${r.time_spent_ms ? ` (${Math.round(r.time_spent_ms/1000)}s)` : ''}`
+      ).join('\n\n');
+      return { content: [{ type: 'text', text: formatted }] };
+    } catch (e) {
+      return { content: [{ type: 'text', text: 
+`<error>${escapeXml(e.message)}</error>` }] };
+    }
+  });
+
+  server.registerTool('browser_get_session_context', {
+    description: 'Get a summary of what you have been browsing recently.',
+    inputSchema: {
+      last_minutes: z.number().int().min(1).max(480).default(60),
+    }
+  }, async ({ last_minutes }) => {
+    const since = Date.now() - last_minutes * 60_000;
+    const rows = historyDb.prepare(`
+      SELECT url, title, visited_at, time_spent_ms FROM visits
+      WHERE visited_at >= ? ORDER BY visited_at ASC
+    `).all(since);
+    if (!rows.length) return { content: [{ type: 'text', text: 
+`No browsing activity in the last ${last_minutes} minutes.` }] };
+    const lines = rows.map(r =>
+`${new Date(r.visited_at).toLocaleTimeString()} — ${r.title || r.url}`
+    );
+    return { content: [{ type: 'text', text: 
+`Browsing context (last ${last_minutes} min):\n\n${lines.join('\n')}` }] };
+  });
+
   return server;
 }
 
@@ -871,7 +1019,8 @@ app.use(express.json({ limit: '10mb' }));
 app.get('/health', (_, res) => res.json({ status: 'ok', service: 'auren-mcp', version: '2.1.2' }));
 
 async function handleMcp(req, res) {
-  if (KEY && req.params.key !== KEY) return res.status(404).json({ error: 'not found' });
+  const bearer = (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
+  if (KEY && !keyMatches(req.params.key ?? bearer)) return res.status(404).json({ error: 'not found' });
   try {
     const server = buildServer();
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
@@ -884,6 +1033,7 @@ async function handleMcp(req, res) {
 }
 
 app.post('/mcp/:key', handleMcp);
+app.post('/mcp', handleMcp);
 app.get('/mcp/:key', (_, res) => res.status(405).json({ error: 'use POST' }));
 
-app.listen(PORT, '127.0.0.1', () => console.log(`Auren MCP v2.1 on :${PORT}  path=/mcp/<key>  cdp=${MAC_CDP.host}:${MAC_CDP.port}`));
+if (!process.env.AUREN_MCP_NO_LISTEN) app.listen(PORT, '127.0.0.1', () => console.log(`Auren MCP v2.1 on :${PORT}  path=/mcp/<key>  cdp=${MAC_CDP.host}:${MAC_CDP.port}`));
