@@ -15,6 +15,20 @@ and the model loop, every avoided round trip is worth far more than the local fi
 | 4-step workflow (4 calls) | 1247 | 200 | all of the above |
 | 4-step workflow (`browser_exec`, 1 call) | n/a | 178 | one round trip |
 
+## Round trips (simulated 30 ms RTT, `node bench/bench.js --rtt 30`)
+Oracle -> Mac over WireGuard measured 13-118 ms (avg 34 ms) per ping, and every CDP command pays it.
+After the sleeps were gone, the cost left is the number of sequential CDP commands per action. A click took
+~7; it now takes 3 (locate + URL in one evaluate, press/release pipelined, settle + snapshot fused into one
+evaluate, with an automatic retry if a navigation destroys the page mid-flight).
+
+| operation (30 ms RTT) | sleeps removed only | + fewer round trips |
+|---|---:|---:|
+| navigate | 191 | 161 |
+| click (in-page) | 286 | 196 |
+| fill | 134 | 102 |
+| 4-step workflow (4 calls) | 667 | 521 |
+| 4-step workflow (`browser_exec`) | 525 | 468 |
+
 ## What was wrong
 1. **A new CDP connection on every call without `tab_id`.** `acquire(null)` looked the session up under
    key `null` but stored it under the real target id, so it always missed: every call did an HTTP

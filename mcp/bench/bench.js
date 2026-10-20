@@ -16,6 +16,7 @@ const argv = process.argv.slice(2);
 const arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
 const N = Number(arg('--n', 15));
 const KEY = 'bench-key';
+const RTT = Number(arg('--rtt', 0)); // simulated network round trip (ms) between the MCP server and the browser
 
 const free = () => new Promise(r => { const s = net.createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => r(p)); }); });
 const chromeBin = ['google-chrome-stable', 'google-chrome', 'chromium'].find(c => { try { execFileSync('which', [c], { stdio: 'ignore' }); return true; } catch { return false; } });
@@ -43,7 +44,18 @@ async function time(name, fn, n = N) {
   results[name] = { n, p50: +q(ms, .5).toFixed(1), p95: +q(ms, .95).toFixed(1), mean: +(ms.reduce((a, b) => a + b, 0) / n).toFixed(1), resp_chars: bytes };
 }
 
-const ports = { cdp: await free(), mcp: await free(), web: await free() };
+const ports = { cdp: await free(), mcp: await free(), web: await free(), cdpProxy: await free() };
+// TCP proxy that delays each direction by RTT/2, so the MCP server sees a browser RTT ms away.
+function delayProxy(listen, target, rtt) {
+  const d = rtt / 2;
+  return net.createServer(c => {
+    const u = net.connect(target, '127.0.0.1');
+    const pipe = (from, to) => from.on('data', buf => setTimeout(() => { if (!to.destroyed) to.write(buf); }, d));
+    pipe(c, u); pipe(u, c);
+    c.on('close', () => u.destroy()); u.on('close', () => c.destroy()); c.on('error', () => {}); u.on('error', () => {});
+  }).listen(listen, '127.0.0.1');
+}
+const proxy = RTT ? delayProxy(ports.cdpProxy, ports.cdp, RTT) : null;
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'auren-bench-home-'));
 const cdir = fs.mkdtempSync(path.join(os.tmpdir(), 'auren-bench-chrome-'));
 const web = http.createServer((req, res) => { const u = req.url.split('?')[0]; res.setHeader('content-type', 'text/html'); res.end(PAGES[u] ?? PAGES['/']); }).listen(ports.web, '127.0.0.1');
@@ -53,7 +65,7 @@ await waitFor(() => fetch(`http://127.0.0.1:${ports.cdp}/json/version`).then(r =
 // the perms file lets the bench act freely
 fs.mkdirSync(path.join(home, '.auren'), { recursive: true });
 fs.writeFileSync(path.join(home, '.auren', 'agent_permissions.json'), JSON.stringify({ version: 1, trust_level: 'trusted', rules: { read: 'allow', navigation: 'allow', click: 'allow', fill: 'allow', js_execute: 'allow', form_submit: 'allow' } }));
-const mcp = spawn(process.execPath, [path.join(here, '..', 'index.js')], { env: { ...process.env, HOME: home, AUREN_MCP_PORT: String(ports.mcp), AUREN_CDP_HOST: '127.0.0.1', AUREN_CDP_PORT: String(ports.cdp), AUREN_MCP_KEY: KEY }, stdio: 'ignore' });
+const mcp = spawn(process.execPath, [path.join(here, '..', 'index.js')], { env: { ...process.env, HOME: home, AUREN_MCP_PORT: String(ports.mcp), AUREN_CDP_HOST: '127.0.0.1', AUREN_CDP_PORT: String(RTT ? ports.cdpProxy : ports.cdp), AUREN_MCP_KEY: KEY }, stdio: 'ignore' });
 await waitFor(() => fetch(`http://127.0.0.1:${ports.mcp}/health`).then(r => r.ok));
 
 const c = new Client({ name: 'bench', version: '0' });
@@ -89,10 +101,10 @@ if (tools.includes('browser_exec')) {
 }
 // connection hygiene: how many CDP sockets does the server hold open?
 const targets = await (await fetch(`http://127.0.0.1:${ports.cdp}/json`)).json();
-results._meta = { tools: tools.length, chrome_targets: targets.map(t => t.type).join(','), node: process.version, n: N };
+results._meta = { rtt_ms: RTT, tools: tools.length, chrome_targets: targets.map(t => t.type).join(','), node: process.version, n: N };
 
 for (const p of [chrome, mcp]) try { p.kill('SIGKILL'); } catch {}
-web.close(); await c.close().catch(() => {});
+web.close(); proxy?.close(); await c.close().catch(() => {});
 for (const d of [home, cdir]) try { fs.rmSync(d, { recursive: true, force: true }); } catch {}
 
 const pad = (s, n) => String(s).padEnd(n);
