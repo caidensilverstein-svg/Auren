@@ -15,7 +15,8 @@ export async function launchBrowser({ browser, headless = false, extraArgs = [],
   for (let i = 0; i < 150 && !actual; i++) {
     await new Promise((r) => setTimeout(r, 200));
     if (child.exitCode !== null) throw new Error('browser exited early: ' + stderr.slice(-500));
-    if (fs.existsSync(file)) { const [p, p2] = fs.readFileSync(file, 'utf8').split('\n'); if (p) actual = { port: +p, path: p2 }; }
+    if (port) { try { const r = await fetch(`http://127.0.0.1:${port}/json/version`); if (r.ok) actual = { port, path: null }; } catch (e) { /* not up yet */ } }
+    if (!actual && fs.existsSync(file)) { const [p, p2] = fs.readFileSync(file, 'utf8').split('\n'); if (p) actual = { port: +p, path: p2 }; }
   }
   if (!actual) { child.kill('SIGKILL'); throw new Error('DevToolsActivePort never appeared: ' + stderr.slice(-500)); }
   return {
