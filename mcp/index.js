@@ -415,15 +415,18 @@ function buildXml(data, state, isDiff) {
   return [...headerLines, ...bodyLines, '</state>'].join('\n');
 }
 
+// In-page "DOM quiet for quiet ms (or max ms)" wait, as source text for embedding in other evaluates.
+const SETTLE_PROMISE = (quiet, max) => `await new Promise(res=>{let t;const done=()=>{o.disconnect();res(1)};const o=new MutationObserver(()=>{clearTimeout(t);t=setTimeout(done,${Number(quiet)})});o.observe(document,{subtree:true,childList:true,attributes:true,characterData:true});t=setTimeout(done,${Number(quiet)});setTimeout(done,${Number(max)});});\n`;
+
 // --- Snapshot JS builder ---
-function snapshotJs(mode, region, maxItems) {
+function snapshotJs(mode, region, maxItems, settleOpts) {
   const mStr = JSON.stringify(mode || 'interactive');
   const rExpr = region ? `document.querySelector(${JSON.stringify(region)})` : 'null';
   const mN = Number(maxItems) || 30;
   const startN = eidCounter;
 
-  return `(function(){
-try{
+  return `(async function(){
+${settleOpts ? SETTLE_PROMISE(settleOpts.quiet, settleOpts.max) : ''}try{
 let n=${startN};
 function kind(el){
   const t=el.tagName.toLowerCase(),r=(el.getAttribute('role')||'').toLowerCase(),ty=(el.type||'').toLowerCase();
@@ -496,20 +499,26 @@ return JSON.stringify({info,regions,nextN:n});
 }
 
 async function takeSnapshot(client, resolvedTabId, opts = {}) {
-  const { mode = 'interactive', region = null, maxItems = 30, isDiff = false } = opts;
+  const { mode = 'interactive', region = null, maxItems = 30, isDiff = false, settle: st = null, prevUrl } = opts;
   const state = getTabState(resolvedTabId);
-  const js = snapshotJs(mode, region, maxItems);
-  const result = await client.Runtime.evaluate({ expression: js, returnByValue: true, awaitPromise: false });
+  const js = snapshotJs(mode, region, maxItems, st);
+  const result = await client.Runtime.evaluate({ expression: js, returnByValue: true, awaitPromise: true });
   const raw = result?.result?.value;
-  if (!raw) throw new Error('Snapshot returned no value');
+  if (!raw) throw new Error(result?.exceptionDetails ? 'Snapshot script failed' : 'Snapshot returned no value');
   const data = JSON.parse(raw);
   if (typeof data.nextN === 'number') eidCounter = data.nextN;
-  return buildXml(data, state, isDiff);
+  // when the caller knows the URL from before the action, decide diff-vs-baseline from the
+  // snapshot itself instead of paying another round trip to ask the page for location.href
+  const navigated = prevUrl !== undefined && data.info ? data.info.url !== prevUrl : undefined;
+  state.lastNavigated = navigated;
+  return buildXml(data, state, navigated !== undefined ? !navigated : isDiff);
 }
 
 // --- Event-driven waits & shared actions (used by the individual tools and by browser_exec) ---
 // Every fixed sleep that used to follow an action is replaced by waiting for the thing the
-// sleep was guessing at: the load event, or the DOM going quiet.
+// sleep was guessing at: the load event, or the DOM going quiet. Round trips to the browser are
+// the other cost (Oracle -> Mac is ~35 ms each), so each action is kept to the minimum number:
+// locate+url (1), input events pipelined (1), then settle+snapshot fused into a single evaluate (1).
 function watch(client, name, ms, pred = () => true) {
   const w = { fired: false };
   let timer;
@@ -521,10 +530,10 @@ function watch(client, name, ms, pred = () => true) {
 }
 
 // Resolves once the page has had no DOM mutations for quietMs (or maxMs elapsed).
-// Rejects if the execution context is destroyed (a navigation) - callers treat that as "navigated".
+// Swallows errors: a navigation destroys the execution context, which callers detect via watch().
 function settle(client, quietMs = 50, maxMs = 400) {
   return client.Runtime.evaluate({
-    expression: `new Promise(res=>{let t;const done=()=>{o.disconnect();res(1)};const o=new MutationObserver(()=>{clearTimeout(t);t=setTimeout(done,${quietMs})});o.observe(document,{subtree:true,childList:true,attributes:true,characterData:true});t=setTimeout(done,${quietMs});setTimeout(done,${maxMs});})`,
+    expression: `(async function(){${SETTLE_PROMISE(quietMs, maxMs)}return 1;})()`,
     awaitPromise: true, returnByValue: true
   }).catch(() => null);
 }
@@ -533,17 +542,60 @@ async function liveUrl(client) {
   return (await client.Runtime.evaluate({ expression: 'location.href', returnByValue: true }))?.result?.value || '';
 }
 
-async function actNavigate(client, target, url) {
+// Start watching for a navigation caused by the action about to be performed.
+function watchNav(client) {
+  return {
+    navW: watch(client, 'Page.frameNavigated', 30000, ({ frame }) => !frame.parentId),
+    loadW: watch(client, 'Page.loadEventFired', 15000),
+    cancel() { this.navW.cancel(); this.loadW.cancel(); },
+  };
+}
+
+// After an input action: wait for the page to settle and (optionally) take the snapshot in the same
+// evaluate. If a navigation destroys the page mid-flight, wait for the new page's load and retry.
+async function afterAction(client, target, ctx, snap, quiet = 50, max = 400) {
+  try {
+    let xml = null;
+    if (ctx.navW.fired) {
+      // navigation already started (anchor click): wait for it, then one settled snapshot
+      await ctx.loadW.promise;
+      if (snap) xml = await takeSnapshot(client, target.id, { ...snap, settle: { quiet: 40, max: 300 }, prevUrl: ctx.prevUrl });
+      else await settle(client, 40, 300);
+      return { xml, didNavigate: true };
+    }
+    if (snap) xml = await takeSnapshot(client, target.id, { ...snap, settle: { quiet, max }, prevUrl: ctx.prevUrl });
+    else await settle(client, quiet, max);
+    if (ctx.navW.fired) {
+      // navigation started while we were settling: let it finish, then take the real view
+      await ctx.loadW.promise;
+      if (snap) xml = await takeSnapshot(client, target.id, { ...snap, settle: { quiet: 40, max: 300 }, prevUrl: ctx.prevUrl });
+      else await settle(client, 40, 300);
+    }
+    return { xml, didNavigate: ctx.navW.fired || (snap ? getTabState(target.id).lastNavigated === true : false) };
+  } catch (e) {
+    // execution context destroyed by a navigation under us: wait for load and retry once
+    if (!ctx.navW.fired) await new Promise(r => setTimeout(r, 30));
+    if (ctx.navW.fired || /context|destroyed|navigat|target closed/i.test(e.message)) {
+      await ctx.loadW.promise;
+      const xml = snap ? await takeSnapshot(client, target.id, { ...snap, settle: { quiet: 40, max: 300 }, prevUrl: ctx.prevUrl }) : null;
+      return { xml, didNavigate: true };
+    }
+    throw e;
+  } finally { ctx.cancel(); }
+}
+
+async function actNavigate(client, target, url, snap = null) {
   // register the listener BEFORE navigating: awaiting the event afterwards can miss it entirely
-  const loaded = watch(client, 'Page.loadEventFired', 15000);
+  const loadW = watch(client, 'Page.loadEventFired', 15000);
   const r = await client.Page.navigate({ url });
-  if (r.errorText) { loaded.cancel(); return { error: `Navigation failed: ${r.errorText}` }; }
-  await loaded.promise;
+  if (r.errorText) { loadW.cancel(); return { error: `Navigation failed: ${r.errorText}` }; }
+  await loadW.promise;
+  if (snap) return { xml: await takeSnapshot(client, target.id, { ...snap, settle: { quiet: 40, max: 300 } }) };
   await settle(client, 40, 300);
   return {};
 }
 
-async function actClick(client, target, raw) {
+async function actClick(client, target, raw, snap = null) {
   const resolved = EID_RE.test(raw) ? `[data-eid="${raw}"]` : raw;
   const elResult = await client.Runtime.evaluate({
     expression: `(function(){
@@ -551,34 +603,31 @@ async function actClick(client, target, raw) {
       if(!el)return null;
       el.scrollIntoView({block:'center',inline:'center'});
       const r=el.getBoundingClientRect();
-      return JSON.stringify({x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2),tag:el.tagName.toLowerCase(),href:el.href||''});
+      return JSON.stringify({x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2),tag:el.tagName.toLowerCase(),href:el.href||'',url:location.href});
     })()`,
     returnByValue: true
   });
   if (!elResult?.result?.value) return { error: `Element not found: ${raw}` };
   const el = JSON.parse(elResult.result.value);
-  const prevUrl = await liveUrl(client);
-
-  const navW = watch(client, 'Page.frameNavigated', 30000, ({ frame }) => !frame.parentId);
-  const loadW = watch(client, 'Page.loadEventFired', 15000);
-  if (el.href && el.tag === 'a' && /^https?:/i.test(el.href)) {
-    await client.Page.navigate({ url: el.href });
-    await loadW.promise;
-  } else {
-    // Real pointer events only. (A JS .click() followed by a mouse click would activate
-    // toggles/checkboxes twice and undo them.)
-    await client.Input.dispatchMouseEvent({ type: 'mousePressed', x: el.x, y: el.y, button: 'left', clickCount: 1 });
-    await client.Input.dispatchMouseEvent({ type: 'mouseReleased', x: el.x, y: el.y, button: 'left', clickCount: 1 });
-    // settle() returns early when a navigation destroys the page; if one happened, wait for its load
-    await settle(client, 50, 400);
-    if (navW.fired) { await loadW.promise; await settle(client, 40, 300); }
-  }
-  navW.cancel(); loadW.cancel();
-  const didNavigate = (await liveUrl(client)) !== prevUrl;
-  return { didNavigate };
+  const ctx = { ...watchNav(client), prevUrl: el.url };
+  try {
+    if (el.href && el.tag === 'a' && /^https?:/i.test(el.href)) {
+      await client.Page.navigate({ url: el.href });
+      await ctx.loadW.promise;
+      ctx.navW.fired = true;
+    } else {
+      // Real pointer events only (a JS .click() followed by a mouse click would activate
+      // toggles/checkboxes twice and undo them). Press and release are pipelined: one round trip.
+      await Promise.all([
+        client.Input.dispatchMouseEvent({ type: 'mousePressed', x: el.x, y: el.y, button: 'left', clickCount: 1 }),
+        client.Input.dispatchMouseEvent({ type: 'mouseReleased', x: el.x, y: el.y, button: 'left', clickCount: 1 }),
+      ]);
+    }
+  } catch (e) { ctx.cancel(); throw e; }
+  return afterAction(client, target, ctx, snap);
 }
 
-async function actFill(client, target, raw, value) {
+async function actFill(client, target, raw, value, snap = null) {
   const resolved = EID_RE.test(raw) ? `[data-eid="${raw}"]` : raw;
   const r = await client.Runtime.evaluate({
     expression: `(function(){
@@ -595,27 +644,18 @@ async function actFill(client, target, raw, value) {
     returnByValue: true
   });
   if (r?.result?.value === 'Not found') return { error: `Element not found: ${raw}` };
-  await settle(client, 30, 150);
-  return {};
+  // fill never navigates by itself, so no navigation watch is needed
+  return afterAction(client, target, { navW: { fired: false, cancel() {} }, loadW: { promise: Promise.resolve(true), cancel() {} }, cancel() {} }, snap, 30, 150);
 }
 
-async function actScroll(client, direction, pixels) {
+async function actScroll(client, target, direction, pixels, snap = null) {
   const expr = direction === 'top' ? 'window.scrollTo(0,0)'
     : direction === 'bottom' ? 'window.scrollTo(0,document.body.scrollHeight)'
     : direction === 'up' ? `window.scrollBy(0,-${Number(pixels) || 500})`
     : `window.scrollBy(0,${Number(pixels) || 500})`;
   await client.Runtime.evaluate({ expression: expr + ';new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))', awaitPromise: true });
-}
-
-// Run an input action, then wait for whatever it caused: a navigation (wait for load) or DOM quiet.
-async function withNavWatch(client, fn) {
-  const navW = watch(client, 'Page.frameNavigated', 30000, ({ frame }) => !frame.parentId);
-  const loadW = watch(client, 'Page.loadEventFired', 15000);
-  try {
-    await fn();
-    await settle(client, 60, 400);
-    if (navW.fired) await loadW.promise;
-  } finally { navW.cancel(); loadW.cancel(); }
+  if (snap) return { xml: await takeSnapshot(client, target.id, snap) };
+  return {};
 }
 
 const KEYS = {
@@ -625,15 +665,18 @@ const KEYS = {
   ArrowLeft: { key: 'ArrowLeft', code: 'ArrowLeft', vk: 37 }, ArrowRight: { key: 'ArrowRight', code: 'ArrowRight', vk: 39 },
   Space: { key: ' ', code: 'Space', vk: 32, text: ' ' },
 };
-async function actPress(client, key) {
+async function actPress(client, target, key, snap = null) {
   const k = KEYS[key];
   if (!k) return { error: `Unsupported key '${key}'. Supported: ${Object.keys(KEYS).join(', ')}` };
   const prevUrl = await liveUrl(client);
-  await withNavWatch(client, async () => {
-    await client.Input.dispatchKeyEvent({ type: k.text ? 'keyDown' : 'rawKeyDown', key: k.key, code: k.code, windowsVirtualKeyCode: k.vk, text: k.text });
-    await client.Input.dispatchKeyEvent({ type: 'keyUp', key: k.key, code: k.code, windowsVirtualKeyCode: k.vk });
-  });
-  return { didNavigate: (await liveUrl(client)) !== prevUrl };
+  const ctx = { ...watchNav(client), prevUrl };
+  try {
+    await Promise.all([
+      client.Input.dispatchKeyEvent({ type: k.text ? 'keyDown' : 'rawKeyDown', key: k.key, code: k.code, windowsVirtualKeyCode: k.vk, text: k.text }),
+      client.Input.dispatchKeyEvent({ type: 'keyUp', key: k.key, code: k.code, windowsVirtualKeyCode: k.vk }),
+    ]);
+  } catch (e) { ctx.cancel(); throw e; }
+  return afterAction(client, target, ctx, snap);
 }
 
 // Event-driven wait: resolves as soon as the selector/text appears (MutationObserver in the page),
@@ -707,10 +750,9 @@ function buildServer() {
       try { parsed = new URL(url); } catch { parsed = null; }
       if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) return errXml('browser_navigate', 'Only http(s) URLs are allowed');
       return await withCDP(tab_id, async (client, target) => {
-        const r = await actNavigate(client, target, url);
+        const r = await actNavigate(client, target, url, { mode: 'interactive', isDiff: false });
         if (r.error) return errXml('browser_navigate', r.error);
-        const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: false });
-        return { content: [{ type: 'text', text: xml }] };
+        return { content: [{ type: 'text', text: r.xml }] };
       });
     } catch (e) {
       return errXml('browser_navigate', e.message);
@@ -726,10 +768,9 @@ function buildServer() {
       return await withCDP(tab_id, async (client, target) => {
         const raw = eid || selector;
         if (!raw) return errXml('browser_click', 'Provide eid or selector');
-        const r = await actClick(client, target, raw);
+        const r = await actClick(client, target, raw, { mode: 'interactive' });
         if (r.error) return errXml('browser_click', r.error);
-        const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: !r.didNavigate });
-        return { content: [{ type: 'text', text: xml }] };
+        return { content: [{ type: 'text', text: r.xml }] };
       });
     } catch (e) {
       return errXml('browser_click', e.message);
@@ -745,10 +786,9 @@ function buildServer() {
       return await withCDP(tab_id, async (client, target) => {
         const raw = eid || selector;
         if (!raw) return errXml('browser_fill', 'Provide eid or selector');
-        const r = await actFill(client, target, raw, value);
+        const r = await actFill(client, target, raw, value, { mode: 'interactive', isDiff: true });
         if (r.error) return errXml('browser_fill', r.error);
-        const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: true });
-        return { content: [{ type: 'text', text: xml }] };
+        return { content: [{ type: 'text', text: r.xml }] };
       });
     } catch (e) {
       return errXml('browser_fill', e.message);
@@ -798,15 +838,13 @@ function buildServer() {
         if (action === 'fill') {
           if (value === undefined) return { content: [{ type: 'text', text: '<error>browser_act fill requires value</error>' }] };
           await client.Runtime.evaluate({ expression: `(function(){const el=document.querySelector(${JSON.stringify(resolved)});if(!el)return;el.focus();const d=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value');if(d&&d.set)d.set.call(el,${JSON.stringify(value)});else el.value=${JSON.stringify(value)};el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));})()`, returnByValue: true });
-          await settle(client, 30, 150);
-          const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: true });
+          const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: true, settle: { quiet: 30, max: 150 } });
           return { content: [{ type: 'text', text: xml }] };
         }
         if (action === 'click') {
-          const r = await actClick(client, target, found.eid);
+          const r = await actClick(client, target, found.eid, { mode: 'interactive' });
           if (r.error) return errXml('browser_act', r.error);
-          const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: !r.didNavigate });
-          return { content: [{ type: 'text', text: xml }] };
+          return { content: [{ type: 'text', text: r.xml }] };
         }
       });
     } catch (e) {
@@ -988,9 +1026,8 @@ function buildServer() {
   }, async ({ direction = 'down', pixels = 500, tab_id }) => {
     try {
       return await withCDP(tab_id, async (client, target) => {
-        await actScroll(client, direction, pixels);
-        const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: false });
-        return { content: [{ type: 'text', text: xml }] };
+        const r = await actScroll(client, target, direction, pixels, { mode: 'interactive', isDiff: false });
+        return { content: [{ type: 'text', text: r.xml }] };
       });
     } catch (e) {
       return errXml('browser_scroll', e.message);
@@ -1045,9 +1082,9 @@ function buildServer() {
               } else if (st.op === 'fill') {
                 if (!raw) err = 'Provide eid or selector'; else if (st.value === undefined) err = 'fill requires value'; else err = (await actFill(client, target, raw, st.value)).error ?? null;
               } else if (st.op === 'press') {
-                const r = await actPress(client, st.key ?? ''); err = r.error ?? null; if (r.didNavigate) navigatedSinceView = true;
+                const r = await actPress(client, target, st.key ?? ''); err = r.error ?? null; if (r.didNavigate) navigatedSinceView = true;
               } else if (st.op === 'scroll') {
-                await actScroll(client, st.direction ?? 'down', st.pixels ?? 500);
+                await actScroll(client, target, st.direction ?? 'down', st.pixels ?? 500);
               } else if (st.op === 'wait_for') {
                 if (!st.selector && !st.text) err = 'wait_for needs selector or text'; else err = (await actWaitFor(client, st)).error ?? null;
               } else if (st.op === 'read') {
