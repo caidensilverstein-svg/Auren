@@ -1,6 +1,6 @@
 .env
 *.log
-node_modules/
+node_modules
 *.pyc
 __pycache__/
 scripts/fingerprint-audit/out/
