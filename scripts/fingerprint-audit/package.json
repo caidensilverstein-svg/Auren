@@ -1,0 +1,12 @@
+{
+  "name": "auren-fingerprint-audit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Self-contained fingerprint test harness for Auren (zero runtime dependencies; Node >= 22).",
+  "scripts": {
+    "test": "node --test test/",
+    "audit": "node run.js"
+  },
+  "engines": { "node": ">=22" }
+}

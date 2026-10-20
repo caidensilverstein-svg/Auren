@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Auren fingerprint audit</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{font:14px system-ui;margin:16px}pre{white-space:pre-wrap;max-height:60vh;overflow:auto;background:#111;color:#cfe;padding:8px}</style>
+</head><body>
+<h1>Auren fingerprint audit</h1>
+<p id="s">collecting...</p>
+<pre id="o"></pre>
+<script>/*__NAV__*/</script>
+<script src="/collect.js"></script>
+<script>
+(async () => {
+  const q = new URLSearchParams(location.search);
+  const opts = { workerUrl: '/worker.js', serverBase: '' };
+  if (q.get('only')) opts.only = q.get('only').split(',');
+  if (q.get('tls')) opts.tlsBase = 'https://localhost:' + q.get('tls');
+  try {
+    const r = await AurenFP.collect(opts);
+    window.__fpResult = r; window.__fpDone = true;
+    document.getElementById('s').textContent = 'done in ' + r.durationMs + ' ms';
+    document.getElementById('o').textContent = JSON.stringify(r, null, 1).slice(0, 200000);
+    if (q.get('post')) fetch('/result?id=' + encodeURIComponent(q.get('post')), { method: 'POST', body: JSON.stringify(r) });
+  } catch (e) { window.__fpError = String(e && e.stack || e); window.__fpDone = true; document.getElementById('s').textContent = 'error ' + e; }
+})();
+</script></body></html>
