@@ -5,7 +5,7 @@ import path from 'node:path';
 
 export async function launchBrowser({ browser, headless = false, extraArgs = [], port = 0, profileDir = null, keepProfile = false, log = false }) {
   const dir = profileDir || fs.mkdtempSync(path.join(os.tmpdir(), 'auren-fp-profile-'));
-  if (profileDir) { fs.rmSync(profileDir, { recursive: true, force: true }); fs.mkdirSync(profileDir, { recursive: true }); }
+  if (profileDir) { if (!/(^|\/)s\d+$/.test(profileDir)) throw new Error('refusing to wipe profile dir not named s<N>: ' + profileDir); fs.rmSync(profileDir, { recursive: true, force: true }); fs.mkdirSync(profileDir, { recursive: true }); }
   const args = [`--user-data-dir=${dir}`, `--remote-debugging-port=${port}`, '--no-first-run', '--no-default-browser-check', '--ignore-certificate-errors', '--allow-insecure-localhost', 'about:blank', ...extraArgs];
   if (headless) args.unshift('--headless=new');
   const child = spawn(browser, args, { stdio: ['ignore', 'ignore', 'pipe'], detached: false });
