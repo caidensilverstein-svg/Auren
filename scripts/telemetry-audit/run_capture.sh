@@ -3,6 +3,7 @@
 # usage: run_capture.sh LABEL SECONDS [--fresh] [--scenario]
 # Output: ~/auren-audit/netlog-LABEL.json, run-LABEL.log
 # Uses CDP port 9224 and a throwaway profile ~/auren-audit/profile-LABEL (never 9223).
+SD="$(cd "$(dirname "$0")" && pwd)"
 LABEL=$1; SECS=$2; shift 2
 FRESH=0; SCEN=0
 for a in "$@"; do [ "$a" = --fresh ] && FRESH=1; [ "$a" = --scenario ] && SCEN=1; done
@@ -18,7 +19,7 @@ PID=$!
 echo $PID > "$A/pid-$LABEL"
 if [ $SCEN = 1 ]; then
   sleep 20
-  node "$(dirname "$0")/scenario.js" 9224 20 > "$A/scenario-$LABEL.log" 2>&1
+  node "$SD/scenario.js" 9224 20 > "$A/scenario-$LABEL.log" 2>&1
 fi
 sleep "$SECS"
 # Snapshot sockets of the browser process tree before stopping.
