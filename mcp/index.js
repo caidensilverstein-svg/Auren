@@ -156,6 +156,8 @@ function getTabState(tabId) {
 // its own hard cap - otherwise 4 attempts against an unreachable host can
 // take 30s+ instead of the ~7.5s the retry message promises.
 const CONNECT_ATTEMPT_TIMEOUT_MS = 1500;
+const DEFAULT_TAB_TTL_MS = 1000;
+const PROBE_IDLE_MS = 15_000;
 
 function withTimeout(promise, ms, label) {
   return new Promise((resolve, reject) => {
@@ -196,9 +198,24 @@ class SessionManager {
     setInterval(() => this._evict(), 60_000).unref();
   }
 
+  // With no tab_id the agent means "the active tab". Resolve it through a short-lived
+  // cache and then reuse that tab's pooled session, instead of opening (and leaking) a
+  // fresh CDP connection on every call.
+  async resolveDefaultTabId() {
+    const now = Date.now();
+    if (this._defaultId && now - this._defaultAt < DEFAULT_TAB_TTL_MS && this._sessions.has(this._defaultId)) return this._defaultId;
+    const t = await getTarget(null);
+    if (!t) throw new Error('No open page found in Auren');
+    this._defaultId = t.id; this._defaultAt = now;
+    return t.id;
+  }
+
   async get(tabId) {
     const existing = this._sessions.get(tabId);
     if (!existing) return null;
+    // A socket close already evicts the session (see 'disconnect' below), so a probe is
+    // only worth paying for when the connection has sat idle long enough to go half-open.
+    if (Date.now() - existing.lastUsed < PROBE_IDLE_MS) { existing.lastUsed = Date.now(); return existing; }
     try {
       await withTimeout(
         existing.client.Runtime.evaluate({ expression: '1', returnByValue: true }),
@@ -218,8 +235,10 @@ class SessionManager {
 
     const client = await withTimeout(
       CDP({ ...MAC_CDP, target: target.id }), CONNECT_ATTEMPT_TIMEOUT_MS, 'CDP connect');
+    // Page events are needed for load/navigation waits. Runtime.enable is deliberately NOT
+    // called: nothing here uses execution-context events, it makes Chrome buffer console and
+    // context traffic for the whole session, and it is a well-known automation tell.
     await client.Page.enable();
-    await client.Runtime.enable();
 
     let lastVisitId = null;
     client.Page.on('frameNavigated', ({ frame }) => {
@@ -271,7 +290,8 @@ class SessionManager {
     let lastErr;
     for (let i = 0; i <= delays.length; i++) {
       try {
-        return (await this.get(tabId)) ?? (await this.open(tabId));
+        const id = tabId ?? (await this.resolveDefaultTabId());
+        return (await this.get(id)) ?? (await this.open(id));
       } catch (e) {
         lastErr = e;
         if (e.noRetry) throw e;
@@ -395,15 +415,18 @@ function buildXml(data, state, isDiff) {
   return [...headerLines, ...bodyLines, '</state>'].join('\n');
 }
 
+// In-page "DOM quiet for quiet ms (or max ms)" wait, as source text for embedding in other evaluates.
+const SETTLE_PROMISE = (quiet, max) => `await new Promise(res=>{let t;const done=()=>{o.disconnect();res(1)};const o=new MutationObserver(()=>{clearTimeout(t);t=setTimeout(done,${Number(quiet)})});o.observe(document,{subtree:true,childList:true,attributes:true,characterData:true});t=setTimeout(done,${Number(quiet)});setTimeout(done,${Number(max)});});\n`;
+
 // --- Snapshot JS builder ---
-function snapshotJs(mode, region, maxItems) {
+function snapshotJs(mode, region, maxItems, settleOpts) {
   const mStr = JSON.stringify(mode || 'interactive');
   const rExpr = region ? `document.querySelector(${JSON.stringify(region)})` : 'null';
   const mN = Number(maxItems) || 30;
   const startN = eidCounter;
 
-  return `(function(){
-try{
+  return `(async function(){
+${settleOpts ? SETTLE_PROMISE(settleOpts.quiet, settleOpts.max) : ''}try{
 let n=${startN};
 function kind(el){
   const t=el.tagName.toLowerCase(),r=(el.getAttribute('role')||'').toLowerCase(),ty=(el.type||'').toLowerCase();
@@ -476,16 +499,205 @@ return JSON.stringify({info,regions,nextN:n});
 }
 
 async function takeSnapshot(client, resolvedTabId, opts = {}) {
-  const { mode = 'interactive', region = null, maxItems = 30, isDiff = false } = opts;
+  const { mode = 'interactive', region = null, maxItems = 30, isDiff = false, settle: st = null, prevUrl } = opts;
   const state = getTabState(resolvedTabId);
-  const js = snapshotJs(mode, region, maxItems);
-  const result = await client.Runtime.evaluate({ expression: js, returnByValue: true, awaitPromise: false });
+  const js = snapshotJs(mode, region, maxItems, st);
+  const result = await client.Runtime.evaluate({ expression: js, returnByValue: true, awaitPromise: true });
   const raw = result?.result?.value;
-  if (!raw) throw new Error('Snapshot returned no value');
+  if (!raw) throw new Error(result?.exceptionDetails ? 'Snapshot script failed' : 'Snapshot returned no value');
   const data = JSON.parse(raw);
   if (typeof data.nextN === 'number') eidCounter = data.nextN;
-  return buildXml(data, state, isDiff);
+  // when the caller knows the URL from before the action, decide diff-vs-baseline from the
+  // snapshot itself instead of paying another round trip to ask the page for location.href
+  const navigated = prevUrl !== undefined && data.info ? data.info.url !== prevUrl : undefined;
+  state.lastNavigated = navigated;
+  return buildXml(data, state, navigated !== undefined ? !navigated : isDiff);
 }
+
+// --- Event-driven waits & shared actions (used by the individual tools and by browser_exec) ---
+// Every fixed sleep that used to follow an action is replaced by waiting for the thing the
+// sleep was guessing at: the load event, or the DOM going quiet. Round trips to the browser are
+// the other cost (Oracle -> Mac is ~35 ms each), so each action is kept to the minimum number:
+// locate+url (1), input events pipelined (1), then settle+snapshot fused into a single evaluate (1).
+function watch(client, name, ms, pred = () => true) {
+  const w = { fired: false };
+  let timer;
+  const handler = (arg) => { if (!w.fired && pred(arg)) { w.fired = true; w.cancel(); w.resolve(true); } };
+  w.promise = new Promise(resolve => { w.resolve = resolve; timer = setTimeout(() => { w.cancel(); resolve(false); }, ms); });
+  w.cancel = () => { clearTimeout(timer); client.removeListener(name, handler); };
+  client.on(name, handler);
+  return w;
+}
+
+// Resolves once the page has had no DOM mutations for quietMs (or maxMs elapsed).
+// Swallows errors: a navigation destroys the execution context, which callers detect via watch().
+function settle(client, quietMs = 50, maxMs = 400) {
+  return client.Runtime.evaluate({
+    expression: `(async function(){${SETTLE_PROMISE(quietMs, maxMs)}return 1;})()`,
+    awaitPromise: true, returnByValue: true
+  }).catch(() => null);
+}
+
+async function liveUrl(client) {
+  return (await client.Runtime.evaluate({ expression: 'location.href', returnByValue: true }))?.result?.value || '';
+}
+
+// Start watching for a navigation caused by the action about to be performed.
+function watchNav(client) {
+  return {
+    navW: watch(client, 'Page.frameNavigated', 30000, ({ frame }) => !frame.parentId),
+    loadW: watch(client, 'Page.loadEventFired', 15000),
+    cancel() { this.navW.cancel(); this.loadW.cancel(); },
+  };
+}
+
+// After an input action: wait for the page to settle and (optionally) take the snapshot in the same
+// evaluate. If a navigation destroys the page mid-flight, wait for the new page's load and retry.
+async function afterAction(client, target, ctx, snap, quiet = 50, max = 400) {
+  try {
+    let xml = null;
+    if (ctx.navW.fired) {
+      // navigation already started (anchor click): wait for it, then one settled snapshot
+      await ctx.loadW.promise;
+      if (snap) xml = await takeSnapshot(client, target.id, { ...snap, settle: { quiet: 40, max: 300 }, prevUrl: ctx.prevUrl });
+      else await settle(client, 40, 300);
+      return { xml, didNavigate: true };
+    }
+    if (snap) xml = await takeSnapshot(client, target.id, { ...snap, settle: { quiet, max }, prevUrl: ctx.prevUrl });
+    else await settle(client, quiet, max);
+    if (ctx.navW.fired) {
+      // navigation started while we were settling: let it finish, then take the real view
+      await ctx.loadW.promise;
+      if (snap) xml = await takeSnapshot(client, target.id, { ...snap, settle: { quiet: 40, max: 300 }, prevUrl: ctx.prevUrl });
+      else await settle(client, 40, 300);
+    }
+    return { xml, didNavigate: ctx.navW.fired || (snap ? getTabState(target.id).lastNavigated === true : false) };
+  } catch (e) {
+    // execution context destroyed by a navigation under us: wait for load and retry once
+    if (!ctx.navW.fired) await new Promise(r => setTimeout(r, 30));
+    if (ctx.navW.fired || /context|destroyed|navigat|target closed/i.test(e.message)) {
+      await ctx.loadW.promise;
+      const xml = snap ? await takeSnapshot(client, target.id, { ...snap, settle: { quiet: 40, max: 300 }, prevUrl: ctx.prevUrl }) : null;
+      return { xml, didNavigate: true };
+    }
+    throw e;
+  } finally { ctx.cancel(); }
+}
+
+async function actNavigate(client, target, url, snap = null) {
+  // register the listener BEFORE navigating: awaiting the event afterwards can miss it entirely
+  const loadW = watch(client, 'Page.loadEventFired', 15000);
+  const r = await client.Page.navigate({ url });
+  if (r.errorText) { loadW.cancel(); return { error: `Navigation failed: ${r.errorText}` }; }
+  await loadW.promise;
+  if (snap) return { xml: await takeSnapshot(client, target.id, { ...snap, settle: { quiet: 40, max: 300 } }) };
+  await settle(client, 40, 300);
+  return {};
+}
+
+async function actClick(client, target, raw, snap = null) {
+  const resolved = EID_RE.test(raw) ? `[data-eid="${raw}"]` : raw;
+  const elResult = await client.Runtime.evaluate({
+    expression: `(function(){
+      const el=document.querySelector(${JSON.stringify(resolved)});
+      if(!el)return null;
+      el.scrollIntoView({block:'center',inline:'center'});
+      const r=el.getBoundingClientRect();
+      return JSON.stringify({x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2),tag:el.tagName.toLowerCase(),href:el.href||'',url:location.href});
+    })()`,
+    returnByValue: true
+  });
+  if (!elResult?.result?.value) return { error: `Element not found: ${raw}` };
+  const el = JSON.parse(elResult.result.value);
+  const ctx = { ...watchNav(client), prevUrl: el.url };
+  try {
+    if (el.href && el.tag === 'a' && /^https?:/i.test(el.href)) {
+      await client.Page.navigate({ url: el.href });
+      await ctx.loadW.promise;
+      ctx.navW.fired = true;
+    } else {
+      // Real pointer events only (a JS .click() followed by a mouse click would activate
+      // toggles/checkboxes twice and undo them). Press and release are pipelined: one round trip.
+      await Promise.all([
+        client.Input.dispatchMouseEvent({ type: 'mousePressed', x: el.x, y: el.y, button: 'left', clickCount: 1 }),
+        client.Input.dispatchMouseEvent({ type: 'mouseReleased', x: el.x, y: el.y, button: 'left', clickCount: 1 }),
+      ]);
+    }
+  } catch (e) { ctx.cancel(); throw e; }
+  return afterAction(client, target, ctx, snap);
+}
+
+async function actFill(client, target, raw, value, snap = null) {
+  const resolved = EID_RE.test(raw) ? `[data-eid="${raw}"]` : raw;
+  const r = await client.Runtime.evaluate({
+    expression: `(function(){
+      const el=document.querySelector(${JSON.stringify(resolved)});
+      if(!el)return'Not found';
+      el.focus();
+      const desc=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value');
+      if(desc&&desc.set)desc.set.call(el,${JSON.stringify(value)});
+      else el.value=${JSON.stringify(value)};
+      el.dispatchEvent(new Event('input',{bubbles:true}));
+      el.dispatchEvent(new Event('change',{bubbles:true}));
+      return'ok';
+    })()`,
+    returnByValue: true
+  });
+  if (r?.result?.value === 'Not found') return { error: `Element not found: ${raw}` };
+  // fill never navigates by itself, so no navigation watch is needed
+  return afterAction(client, target, { navW: { fired: false, cancel() {} }, loadW: { promise: Promise.resolve(true), cancel() {} }, cancel() {} }, snap, 30, 150);
+}
+
+async function actScroll(client, target, direction, pixels, snap = null) {
+  const expr = direction === 'top' ? 'window.scrollTo(0,0)'
+    : direction === 'bottom' ? 'window.scrollTo(0,document.body.scrollHeight)'
+    : direction === 'up' ? `window.scrollBy(0,-${Number(pixels) || 500})`
+    : `window.scrollBy(0,${Number(pixels) || 500})`;
+  await client.Runtime.evaluate({ expression: expr + ';new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))', awaitPromise: true });
+  if (snap) return { xml: await takeSnapshot(client, target.id, snap) };
+  return {};
+}
+
+const KEYS = {
+  Enter: { key: 'Enter', code: 'Enter', vk: 13, text: '\r' }, Tab: { key: 'Tab', code: 'Tab', vk: 9 },
+  Escape: { key: 'Escape', code: 'Escape', vk: 27 }, Backspace: { key: 'Backspace', code: 'Backspace', vk: 8 },
+  ArrowDown: { key: 'ArrowDown', code: 'ArrowDown', vk: 40 }, ArrowUp: { key: 'ArrowUp', code: 'ArrowUp', vk: 38 },
+  ArrowLeft: { key: 'ArrowLeft', code: 'ArrowLeft', vk: 37 }, ArrowRight: { key: 'ArrowRight', code: 'ArrowRight', vk: 39 },
+  Space: { key: ' ', code: 'Space', vk: 32, text: ' ' },
+};
+async function actPress(client, target, key, snap = null) {
+  const k = KEYS[key];
+  if (!k) return { error: `Unsupported key '${key}'. Supported: ${Object.keys(KEYS).join(', ')}` };
+  const prevUrl = await liveUrl(client);
+  const ctx = { ...watchNav(client), prevUrl };
+  try {
+    await Promise.all([
+      client.Input.dispatchKeyEvent({ type: k.text ? 'keyDown' : 'rawKeyDown', key: k.key, code: k.code, windowsVirtualKeyCode: k.vk, text: k.text }),
+      client.Input.dispatchKeyEvent({ type: 'keyUp', key: k.key, code: k.code, windowsVirtualKeyCode: k.vk }),
+    ]);
+  } catch (e) { ctx.cancel(); throw e; }
+  return afterAction(client, target, ctx, snap);
+}
+
+// Event-driven wait: resolves as soon as the selector/text appears (MutationObserver in the page),
+// re-arming across navigations until the deadline.
+async function actWaitFor(client, { selector, text, timeout_ms = 5000 }) {
+  const deadline = Date.now() + Math.min(Number(timeout_ms) || 5000, 15000);
+  const check = `(function(){${selector ? `if(document.querySelector(${JSON.stringify(selector)}))return true;` : ''}${text ? `if((document.body&&document.body.innerText||'').includes(${JSON.stringify(text)}))return true;` : ''}return false;})()`;
+  while (Date.now() < deadline) {
+    const left = deadline - Date.now();
+    try {
+      const r = await client.Runtime.evaluate({
+        expression: `new Promise(res=>{const c=()=>${check};if(c())return res(true);const o=new MutationObserver(()=>{if(c()){o.disconnect();res(true)}});o.observe(document,{subtree:true,childList:true,characterData:true,attributes:true});setTimeout(()=>{o.disconnect();res(false)},${left});})`,
+        awaitPromise: true, returnByValue: true });
+      return r?.result?.value ? {} : { error: `wait_for timed out after ${timeout_ms}ms` };
+    } catch { await new Promise(r => setTimeout(r, 80)); } // context destroyed by a navigation: re-arm
+  }
+  return { error: `wait_for timed out after ${timeout_ms}ms` };
+}
+
+const EID_RE = /^(btn|lnk|inp|sel|chk|h|elt|alert)-\d+$/;
+const errXml = (tool, msg) => ({ content: [{ type: 'text', text: `<error tool="${tool}">${escapeXml(msg)}</error>` }] });
 
 // --- MCP server ---
 function buildServer() {
@@ -526,137 +738,62 @@ function buildServer() {
   });
 
   server.registerTool('browser_navigate', {
-    description: 'Navigate to a URL in Auren. Returns a compact baseline snapshot of the loaded page — no need to call browser_snapshot afterwards.',
+    description: 'Navigate to a URL in Auren. Returns a compact baseline snapshot of the loaded page - no need to call browser_snapshot afterwards.',
     inputSchema: { url: z.string(), tab_id: z.string().optional() }
   }, async ({ url, tab_id }) => {
     try {
       const perm = checkPermission('navigation');
-      if (!perm.allowed) return { content: [{ type: 'text', text:
-`<permission_denied>${perm.reason}</permission_denied>` }] };
+      if (!perm.allowed) return denied(perm);
       // javascript:/data:/file: URLs would run script or read local files
       // while bypassing the js_execute permission gate.
       let parsed;
       try { parsed = new URL(url); } catch { parsed = null; }
-      if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) {
-        return { content: [{ type: 'text', text: `<error tool="browser_navigate">Only http(s) URLs are allowed</error>` }] };
-      }
+      if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) return errXml('browser_navigate', 'Only http(s) URLs are allowed');
       return await withCDP(tab_id, async (client, target) => {
-        await client.Page.navigate({ url });
-        await client.Page.loadEventFired().catch(() => {});
-        await new Promise(r => setTimeout(r, 400));
-        const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: false });
-        return { content: [{ type: 'text', text: xml }] };
+        const r = await actNavigate(client, target, url, { mode: 'interactive', isDiff: false });
+        if (r.error) return errXml('browser_navigate', r.error);
+        return { content: [{ type: 'text', text: r.xml }] };
       });
     } catch (e) {
-      return { content: [{ type: 'text', text: `<error tool="browser_navigate">${escapeXml(e.message)}</error>` }] };
+      return errXml('browser_navigate', e.message);
     }
   });
-
   server.registerTool('browser_click', {
     description: 'Click a UI element by eid (e.g. "btn-3") from a recent snapshot, or CSS selector. Prefer eid when available. Returns a baseline snapshot if the click caused navigation, or a mutation diff snapshot for in-page changes.',
     inputSchema: { eid: z.string().optional(), selector: z.string().optional(), tab_id: z.string().optional() }
   }, async ({ eid, selector, tab_id }) => {
     try {
       const perm = checkPermission('click');
-      if (!perm.allowed) return { content: [{ type: 'text', text: 
-`<permission_denied>${perm.reason}</permission_denied>` }] };
+      if (!perm.allowed) return denied(perm);
       return await withCDP(tab_id, async (client, target) => {
-        const EID_RE = /^(btn|lnk|inp|sel|chk|h|elt|alert)-\d+$/;
         const raw = eid || selector;
-        if (!raw) return { content: [{ type: 'text', text: '<error>Provide eid or selector</error>' }] };
-        const resolved = EID_RE.test(raw) ? `[data-eid="${raw}"]` : raw;
-
-        const elResult = await client.Runtime.evaluate({
-          expression: `(function(){
-            const el=document.querySelector(${JSON.stringify(resolved)});
-            if(!el)return null;
-            const r=el.getBoundingClientRect();
-            return JSON.stringify({x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2),text:(el.textContent||el.value||'').trim().slice(0,60),tag:el.tagName.toLowerCase(),href:el.href||''});
-          })()`,
-          returnByValue: true
-        });
-
-        if (!elResult?.result?.value) {
-          return { content: [{ type: 'text', text: `<error>Element not found: ${escapeXml(raw)}</error>` }] };
-        }
-        const el = JSON.parse(elResult.result.value);
-
-        // FIX 1: capture URL before action — check after to detect any navigation,
-        // including form submissions and JS-triggered navigations, not just <a> clicks
-        // Read the live URL rather than the last snapshot's, which is empty
-        // before the first snapshot and would report a bogus navigation.
-        const prevUrl = (await client.Runtime.evaluate({ expression: 'location.href', returnByValue: true }))?.result?.value || '';
-
-        if (el.href && el.tag === 'a' && /^https?:/i.test(el.href)) {
-          await client.Page.navigate({ url: el.href });
-          await client.Page.loadEventFired().catch(() => {});
-          await new Promise(r => setTimeout(r, 400));
-        } else {
-          // Real pointer events only. (A JS .click() followed by a mouse click
-          // would activate toggles/checkboxes twice and undo them.)
-          await client.Input.dispatchMouseEvent({ type: 'mousePressed', x: el.x, y: el.y, button: 'left', clickCount: 1 });
-          await client.Input.dispatchMouseEvent({ type: 'mouseReleased', x: el.x, y: el.y, button: 'left', clickCount: 1 });
-          await new Promise(r => setTimeout(r, 350));
-          const urlCheck = await client.Runtime.evaluate({ expression: 'location.href', returnByValue: true });
-          if ((urlCheck?.result?.value || '') !== prevUrl) {
-            await client.Page.loadEventFired().catch(() => {});
-            await new Promise(r => setTimeout(r, 300));
-          }
-        }
-
-        // Determine if navigation happened by comparing state URL to pre-click URL
-        const urlCheckFinal = await client.Runtime.evaluate({ expression: 'location.href', returnByValue: true });
-        const didNavigate = (urlCheckFinal?.result?.value || '') !== prevUrl;
-
-        const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: !didNavigate });
-        return { content: [{ type: 'text', text: xml }] };
+        if (!raw) return errXml('browser_click', 'Provide eid or selector');
+        const r = await actClick(client, target, raw, { mode: 'interactive' });
+        if (r.error) return errXml('browser_click', r.error);
+        return { content: [{ type: 'text', text: r.xml }] };
       });
     } catch (e) {
-      return { content: [{ type: 'text', text: `<error tool="browser_click">${escapeXml(e.message)}</error>` }] };
+      return errXml('browser_click', e.message);
     }
   });
-
   server.registerTool('browser_fill', {
-    description: 'Fill an input field by eid (e.g. "inp-5") from a recent snapshot, or CSS selector. Prefer eid when available. Returns a compact snapshot after filling — no need to call browser_snapshot afterwards.',
+    description: 'Fill an input field by eid (e.g. "inp-5") from a recent snapshot, or CSS selector. Prefer eid when available. Returns a compact snapshot after filling - no need to call browser_snapshot afterwards.',
     inputSchema: { eid: z.string().optional(), selector: z.string().optional(), value: z.string(), tab_id: z.string().optional() }
   }, async ({ eid, selector, value, tab_id }) => {
     try {
       const perm = checkPermission('fill');
-      if (!perm.allowed) return { content: [{ type: 'text', text: 
-`<permission_denied>${perm.reason}</permission_denied>` }] };
+      if (!perm.allowed) return denied(perm);
       return await withCDP(tab_id, async (client, target) => {
-        const EID_RE = /^(btn|lnk|inp|sel|chk|h|elt|alert)-\d+$/;
         const raw = eid || selector;
-        if (!raw) return { content: [{ type: 'text', text: '<error>Provide eid or selector</error>' }] };
-        const resolved = EID_RE.test(raw) ? `[data-eid="${raw}"]` : raw;
-
-        const r = await client.Runtime.evaluate({
-          expression: `(function(){
-            const el=document.querySelector(${JSON.stringify(resolved)});
-            if(!el)return'Not found';
-            el.focus();
-            const desc=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value');
-            if(desc&&desc.set)desc.set.call(el,${JSON.stringify(value)});
-            else el.value=${JSON.stringify(value)};
-            el.dispatchEvent(new Event('input',{bubbles:true}));
-            el.dispatchEvent(new Event('change',{bubbles:true}));
-            return'ok';
-          })()`,
-          returnByValue: true
-        });
-
-        if (r?.result?.value === 'Not found') {
-          return { content: [{ type: 'text', text: `<error>Element not found: ${escapeXml(raw)}</error>` }] };
-        }
-        await new Promise(res => setTimeout(res, 150));
-        const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: true });
-        return { content: [{ type: 'text', text: xml }] };
+        if (!raw) return errXml('browser_fill', 'Provide eid or selector');
+        const r = await actFill(client, target, raw, value, { mode: 'interactive', isDiff: true });
+        if (r.error) return errXml('browser_fill', r.error);
+        return { content: [{ type: 'text', text: r.xml }] };
       });
     } catch (e) {
-      return { content: [{ type: 'text', text: `<error tool="browser_fill">${escapeXml(e.message)}</error>` }] };
+      return errXml('browser_fill', e.message);
     }
   });
-
   server.registerTool('browser_act', {
     description: 'Find an element by natural language description and act on it in one step. action: "click", "fill", "read". For fill, provide value. Eliminates the snapshot→find→act round trip.',
     inputSchema: {
@@ -701,20 +838,13 @@ function buildServer() {
         if (action === 'fill') {
           if (value === undefined) return { content: [{ type: 'text', text: '<error>browser_act fill requires value</error>' }] };
           await client.Runtime.evaluate({ expression: `(function(){const el=document.querySelector(${JSON.stringify(resolved)});if(!el)return;el.focus();const d=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value');if(d&&d.set)d.set.call(el,${JSON.stringify(value)});else el.value=${JSON.stringify(value)};el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));})()`, returnByValue: true });
-          await new Promise(r => setTimeout(r, 150));
-          const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: true });
+          const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: true, settle: { quiet: 30, max: 150 } });
           return { content: [{ type: 'text', text: xml }] };
         }
         if (action === 'click') {
-          const state = getTabState(target.id);
-          const prevUrl = state.url;
-          await client.Runtime.evaluate({ expression: `(function(){const el=document.querySelector(${JSON.stringify(resolved)});if(el)el.click();})()` });
-          await new Promise(r => setTimeout(r, 350));
-          const urlCheck = await client.Runtime.evaluate({ expression: 'location.href', returnByValue: true });
-          const didNavigate = (urlCheck?.result?.value || '') !== prevUrl;
-          if (didNavigate) { await client.Page.loadEventFired().catch(() => {}); await new Promise(r => setTimeout(r, 300)); }
-          const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: !didNavigate });
-          return { content: [{ type: 'text', text: xml }] };
+          const r = await actClick(client, target, found.eid, { mode: 'interactive' });
+          if (r.error) return errXml('browser_act', r.error);
+          return { content: [{ type: 'text', text: r.xml }] };
         }
       });
     } catch (e) {
@@ -893,24 +1023,16 @@ function buildServer() {
       pixels: z.number().optional(),
       tab_id: z.string().optional()
     }
-  // FIX 2: return snapshot after scroll so below-fold content is immediately visible
   }, async ({ direction = 'down', pixels = 500, tab_id }) => {
     try {
       return await withCDP(tab_id, async (client, target) => {
-        const expr = direction === 'top' ? 'window.scrollTo(0,0)'
-          : direction === 'bottom' ? 'window.scrollTo(0,document.body.scrollHeight)'
-          : direction === 'up' ? `window.scrollBy(0,-${pixels})`
-          : `window.scrollBy(0,${pixels})`;
-        await client.Runtime.evaluate({ expression: expr });
-        await new Promise(r => setTimeout(r, 200));
-        const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: false });
-        return { content: [{ type: 'text', text: xml }] };
+        const r = await actScroll(client, target, direction, pixels, { mode: 'interactive', isDiff: false });
+        return { content: [{ type: 'text', text: r.xml }] };
       });
     } catch (e) {
-      return { content: [{ type: 'text', text: `<error tool="browser_scroll">${escapeXml(e.message)}</error>` }] };
+      return errXml('browser_scroll', e.message);
     }
   });
-
   server.registerTool('browser_select_tab', {
     description: 'Switch to a tab by ID (from browser_get_tabs)',
     inputSchema: { tab_id: z.string() }
@@ -922,6 +1044,75 @@ function buildServer() {
       return { content: [{ type: 'text', text: `Switched to tab ${tab_id}` }] };
     } catch (e) {
       return { content: [{ type: 'text', text: `<error tool="browser_select_tab">${escapeXml(e.message)}</error>` }] };
+    }
+  });
+
+  server.registerTool('browser_exec', {
+    description: 'Run a sequence of browser steps in ONE call (one round trip instead of one per step). steps: array (max 25) of {op, ...}. ops: navigate{url} | click{eid|selector} | fill{eid|selector,value} | press{key: Enter|Tab|Escape|Backspace|Arrow*|Space} | scroll{direction,pixels} | wait_for{selector|text,timeout_ms} | read{region,max_chars} | snapshot{mode,region,max_items} | js{code}. Stops at the first failing step. Each step is permission-checked like its single-step tool. Returns a per-step summary plus the output of read/snapshot/js steps and, unless the last step already returns a view, a final interactive snapshot.',
+    inputSchema: {
+      steps: z.array(z.object({
+        op: z.enum(['navigate', 'click', 'fill', 'press', 'scroll', 'wait_for', 'read', 'snapshot', 'js']),
+        url: z.string().optional(), eid: z.string().optional(), selector: z.string().optional(), value: z.string().optional(),
+        key: z.string().optional(), direction: z.enum(['up', 'down', 'top', 'bottom']).optional(), pixels: z.number().optional(),
+        text: z.string().optional(), timeout_ms: z.number().optional(), region: z.string().optional(), max_chars: z.number().optional(),
+        mode: z.enum(['interactive', 'full', 'outline']).optional(), max_items: z.number().optional(), code: z.string().optional(),
+      })).min(1).max(25),
+      tab_id: z.string().optional(),
+      final_snapshot: z.boolean().default(true),
+    }
+  }, async ({ steps, tab_id, final_snapshot }) => {
+    const NEED = { navigate: 'navigation', click: 'click', fill: 'fill', press: 'fill', scroll: 'read', wait_for: 'read', read: 'read', snapshot: 'read', js: 'js_execute' };
+    try {
+      return await withCDP(tab_id, async (client, target) => {
+        const out = []; let completed = 0; let failed = null; let lastView = false; let navigatedSinceView = false;
+        for (let i = 0; i < steps.length; i++) {
+          const st = steps[i]; const t0 = performance.now();
+          const perm = checkPermission(NEED[st.op]);
+          let body = ''; let err = null; lastView = false;
+          if (!perm.allowed) err = perm.reason;
+          else {
+            const raw = st.eid || st.selector;
+            try {
+              if (st.op === 'navigate') {
+                let u; try { u = new URL(st.url); } catch { u = null; }
+                if (!u || !['http:', 'https:'].includes(u.protocol)) err = 'Only http(s) URLs are allowed';
+                else { const r = await actNavigate(client, target, st.url); err = r.error ?? null; navigatedSinceView = true; }
+              } else if (st.op === 'click') {
+                if (!raw) err = 'Provide eid or selector'; else { const r = await actClick(client, target, raw); err = r.error ?? null; if (r.didNavigate) navigatedSinceView = true; }
+              } else if (st.op === 'fill') {
+                if (!raw) err = 'Provide eid or selector'; else if (st.value === undefined) err = 'fill requires value'; else err = (await actFill(client, target, raw, st.value)).error ?? null;
+              } else if (st.op === 'press') {
+                const r = await actPress(client, target, st.key ?? ''); err = r.error ?? null; if (r.didNavigate) navigatedSinceView = true;
+              } else if (st.op === 'scroll') {
+                await actScroll(client, target, st.direction ?? 'down', st.pixels ?? 500);
+              } else if (st.op === 'wait_for') {
+                if (!st.selector && !st.text) err = 'wait_for needs selector or text'; else err = (await actWaitFor(client, st)).error ?? null;
+              } else if (st.op === 'read') {
+                const cap = Math.min(Number(st.max_chars) || 4000, 12000);
+                const sel = !st.region ? 'document.body' : EID_RE.test(st.region) ? `document.querySelector('[data-eid="${st.region}"]')` : `document.querySelector(${JSON.stringify(st.region)})`;
+                const r = await client.Runtime.evaluate({ expression: `(function(){const el=${sel};if(!el)return'[not found]';const t=(el.innerText||el.textContent||'').replace(/\n{3,}/g,'\n\n').trim();return t.length>${cap}?t.slice(0,${cap})+'\n[truncated]':t;})()`, returnByValue: true });
+                body = r?.result?.value ?? ''; lastView = true;
+              } else if (st.op === 'snapshot') {
+                body = await takeSnapshot(client, target.id, { mode: st.mode ?? 'interactive', region: st.region ?? null, maxItems: st.max_items, isDiff: false }); lastView = true; navigatedSinceView = false;
+              } else if (st.op === 'js') {
+                const r = await client.Runtime.evaluate({ expression: st.code ?? '', returnByValue: true, awaitPromise: true });
+                body = JSON.stringify(r.result?.value ?? r.result?.description ?? null); lastView = true;
+              }
+            } catch (e) { err = e.message; }
+          }
+          const ms = Math.round(performance.now() - t0);
+          if (err) { failed = { i, err }; out.push(`  <step n="${i + 1}" op="${st.op}" ms="${ms}" ok="false">${escapeXml(err)}</step>`); break; }
+          completed++;
+          out.push(body ? `  <step n="${i + 1}" op="${st.op}" ms="${ms}" ok="true">\n${body}\n  </step>` : `  <step n="${i + 1}" op="${st.op}" ms="${ms}" ok="true" />`);
+        }
+        if (!failed && final_snapshot && !lastView) {
+          const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: !navigatedSinceView });
+          out.push(xml.split('\n').map(l => '  ' + l).join('\n'));
+        }
+        return { content: [{ type: 'text', text: `<exec steps="${steps.length}" completed="${completed}" ok="${!failed}">\n${out.join('\n')}\n</exec>` }] };
+      });
+    } catch (e) {
+      return errXml('browser_exec', e.message);
     }
   });
 
