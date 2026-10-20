@@ -6,7 +6,12 @@
 #ifndef BRAVE_BROWSER_UI_WEBUI_AUREN_AUREN_SECURITY_HANDLER_H_
 #define BRAVE_BROWSER_UI_WEBUI_AUREN_AUREN_SECURITY_HANDLER_H_
 
+#include <optional>
+#include <string>
+
+#include "base/files/file_path.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
 #include "base/values.h"
 #include "brave/browser/ui/webui/auren/auren_security_handler.mojom.h"
 #include "content/public/browser/web_ui_message_handler.h"
@@ -43,8 +48,14 @@ class AurenSecurityHandler
   void HandleSetJsEnabled(const base::ListValue& args);
   void HandleSetHttpsOnly(const base::ListValue& args);
 
+  // Delivers the last *measured* fingerprint audit (written by
+  // scripts/fingerprint-audit, see docs/privacy/fingerprinting/harness.md) to
+  // the page. The file is read on a blocking-capable thread.
+  void OnFingerprintAuditRead(std::optional<base::DictValue> summary);
+
   raw_ptr<Profile> profile_ = nullptr;
   mojo::Receiver<auren::mojom::AurenSecurityHandler> receiver_{this};
+  base::WeakPtrFactory<AurenSecurityHandler> weak_factory_{this};
 };
 
 #endif  // BRAVE_BROWSER_UI_WEBUI_AUREN_AUREN_SECURITY_HANDLER_H_

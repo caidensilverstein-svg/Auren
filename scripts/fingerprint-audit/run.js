@@ -16,6 +16,7 @@ import { launchBrowser } from './lib/launch.js';
 import { analyze } from './lib/analyze.js';
 import { evaluatePolicy, markdown } from './lib/report.js';
 import { estimate } from './lib/entropy.js';
+import { buildSelftest } from './lib/selftest.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -78,6 +79,10 @@ async function main() {
   const reference = JSON.parse(fs.readFileSync(opt('reference', path.join(here, 'reference', 'plausible-sets.json')), 'utf8'));
   const baseline = opt('baseline') ? JSON.parse(fs.readFileSync(opt('baseline'), 'utf8')) : null;
 
+  if (opt('build-selftest')) { // node run.js --build-selftest dist/selftest.js [--policy auren-mac-v1]
+    fs.mkdirSync(path.dirname(path.resolve(opt('build-selftest'))), { recursive: true });
+    fs.writeFileSync(opt('build-selftest'), buildSelftest(policy, policyName)); console.log('wrote', opt('build-selftest')); return;
+  }
   let raw;
   if (opt('reanalyze')) {
     raw = JSON.parse(fs.readFileSync(opt('reanalyze'), 'utf8'));
@@ -138,6 +143,11 @@ async function main() {
   fs.writeFileSync(path.join(outDir, 'summary.json'), JSON.stringify(summarize(report, first), null, 1));
   console.log(markdown(report));
   console.log(`\nartifacts: ${outDir}`);
+  if (opt('write-profile-report')) { // consumed by the NTP security bar (AurenSecurityHandler)
+    const dest = path.join(opt('write-profile-report'), 'auren-fingerprint-audit.json');
+    fs.writeFileSync(dest, JSON.stringify({ date: raw.meta.date, policy: policyName, browser: raw.meta.browserVersion, fail: evaluation.totals.FAIL, warn: evaluation.totals.WARN, pass: evaluation.totals.PASS, combinedStableHash: analysis.combinedStableHash }, null, 1));
+    console.log('wrote', dest);
+  }
   const failOn = opt('fail-on', 'fail');
   const code = failOn === 'never' ? 0 : (evaluation.totals.FAIL > 0 || (failOn === 'warn' && evaluation.totals.WARN > 0)) ? 1 : 0;
   process.exit(code);
