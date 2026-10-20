@@ -71,18 +71,94 @@ const sessionGrants = new Map(); // action -> { level, expires }
 const pendingRequests = new Map(); // id -> { id, action, reason, requested_at }
 const DEFAULT_GRANT_MINUTES = 60;
 const MAX_PENDING = 50;
-const ACTIONS = ['fill', 'click', 'js_execute', 'form_submit', 'navigation', 'read'];
+const ACTIONS = ['fill', 'click', 'js_execute', 'form_submit', 'navigation', 'read', 'sensitive_input'];
+const DENY_BY_DEFAULT = new Set(['sensitive_input']); // password / card / one-time-code fields
 
 function checkPermission(action) {
   const p = loadPerms();
   const grant = sessionGrants.get(action);
   if (grant && grant.expires <= Date.now()) sessionGrants.delete(action);
   const live = grant && grant.expires > Date.now() ? grant.level : undefined;
-  const rule = live ?? p.rules?.[action] ?? 'ask';
+  if (p.panic) return { allowed: false, reason: 'Agent access is suspended by the user (panic switch). Ask the user to run: auren-perm panic off' };
+  const rule = live ?? p.rules?.[action] ?? (DENY_BY_DEFAULT.has(action) ? 'deny' : 'ask');
   if (rule === 'allow') return { allowed: true };
   if (rule === 'deny') return { allowed: false, reason: `Action '${action}' is denied by permissions policy.` };
   if (p.trust_level === 'trusted') return { allowed: true };
   return { allowed: false, reason: `Action '${action}' requires user approval. Call 'browser_set_permission' to file a request, then ask the user to approve it (auren-perm approve).` };
+}
+
+// --- Per-site rules (user-managed): deny = no access at all, readonly = may read/snapshot but not
+// click, fill, press, run JS or submit. Matches the host and its subdomains. ---
+function domainRule(urlStr) {
+  let host;
+  try { host = new URL(urlStr).hostname.toLowerCase(); } catch { return undefined; }
+  const rules = loadPerms().domains ?? {};
+  let best; let bestLen = -1;
+  for (const [d, r] of Object.entries(rules)) {
+    if ((host === d || host.endsWith('.' + d)) && d.length > bestLen) { best = r; bestLen = d.length; }
+  }
+  return best;
+}
+function domainBlocks(urlStr, kind) { // kind: 'read' | 'write'
+  const r = domainRule(urlStr);
+  if (r === 'deny') return { reason: `The user has blocked this site (${new URL(urlStr).hostname}) for the agent.` };
+  if (r === 'readonly' && kind === 'write') return { reason: `The user allows only reading on ${new URL(urlStr).hostname}; clicking, typing and scripts are blocked there.` };
+  return null;
+}
+
+// --- Audit log: one JSON line per tool call at ~/.auren/audit.log (mode 600, rotated at 5 MB).
+// Records what the agent did and the outcome, never typed values, script source or URL query strings. ---
+const AUDIT_PATH = path.join(os.homedir(), '.auren', 'audit.log');
+const AUDIT_MAX_BYTES = 5 * 1024 * 1024;
+function auditArgs(args = {}) {
+  const out = {};
+  for (const [k, v] of Object.entries(args)) {
+    if (k === 'value' || k === 'code' || k === 'text') out[k + '_len'] = String(v ?? '').length;
+    else if (k === 'url') { try { const u = new URL(v); out.url = u.origin + u.pathname; } catch { out.url = '(invalid)'; } }
+    else if (k === 'steps' && Array.isArray(v)) out.steps = v.map(x => x.op + (x.url ? ':' + (() => { try { return new URL(x.url).hostname; } catch { return '?'; } })() : ''));
+    else if (typeof v === 'string') out[k] = v.slice(0, 120);
+    else out[k] = v;
+  }
+  return out;
+}
+function auditWrite(entry) {
+  try {
+    fs.mkdirSync(path.dirname(AUDIT_PATH), { recursive: true, mode: 0o700 });
+    try { if (fs.statSync(AUDIT_PATH).size > AUDIT_MAX_BYTES) fs.renameSync(AUDIT_PATH, AUDIT_PATH + '.1'); } catch {}
+    fs.appendFileSync(AUDIT_PATH, JSON.stringify(entry) + '\n', { mode: 0o600 });
+  } catch (e) { console.error('audit write failed:', e.message); }
+}
+
+// Circuit breaker: a runaway or hijacked agent cannot fire unlimited state-changing actions.
+const MAX_ACTIONS_PER_MIN = Number(process.env.AUREN_MAX_ACTIONS_PER_MIN) || 120;
+const actionTimes = [];
+const STATE_CHANGING = new Set(['browser_click', 'browser_fill', 'browser_navigate', 'browser_execute_js', 'browser_act', 'browser_exec', 'browser_set_preference']);
+function rateLimited(weight) {
+  const now = Date.now();
+  while (actionTimes.length && now - actionTimes[0] > 60_000) actionTimes.shift();
+  if (actionTimes.length + weight > MAX_ACTIONS_PER_MIN) return true;
+  for (let i = 0; i < weight; i++) actionTimes.push(now);
+  return false;
+}
+
+function instrument(server) {
+  const orig = server.registerTool.bind(server);
+  server.registerTool = (name, cfg, handler) => orig(name, cfg, async (args, extra) => {
+    const t0 = Date.now();
+    const p = loadPerms();
+    let res;
+    if (p.panic && name !== 'browser_get_permissions') {
+      res = { content: [{ type: 'text', text: '<permission_denied>Agent access is suspended by the user (panic switch). Ask the user to run: auren-perm panic off</permission_denied>' }] };
+    } else if (STATE_CHANGING.has(name) && rateLimited(name === 'browser_exec' ? (args?.steps?.length || 1) : 1)) {
+      res = { content: [{ type: 'text', text: `<error tool="${name}">Rate limit: more than ${MAX_ACTIONS_PER_MIN} actions in the last minute. Slow down or ask the user to raise AUREN_MAX_ACTIONS_PER_MIN.</error>` }] };
+    } else {
+      try { res = await handler(args, extra); } catch (e) { auditWrite({ ts: new Date().toISOString(), tool: name, args: auditArgs(args), outcome: 'exception', ms: Date.now() - t0 }); throw e; }
+    }
+    const txt = (res?.content ?? []).map(c => c.text ?? '').join('');
+    const outcome = (/<permission_denied>/.test(txt) || /ok="false"[^<]*>[^<]*(denied|blocked|suspended|only reading|requires user approval)/i.test(txt)) ? 'denied' : (/<error/.test(txt.slice(0, 120)) || /ok="false"/.test(txt)) ? 'error' : 'ok';
+    auditWrite({ ts: new Date().toISOString(), tool: name, args: auditArgs(args), outcome, ms: Date.now() - t0 });
+    return res;
+  });
 }
 
 function denied(perm) {
@@ -405,7 +481,7 @@ function buildXml(data, state, isDiff) {
   state.lastFPs = newFPs;
 
   // FIX 3: include truncation signal in state tag so callers can detect it programmatically
-  const truncatedAttr = wasTruncated ? ` truncated="true" total_items="${totalItemCount}"` : '';
+  const truncatedAttr = (wasTruncated ? ` truncated="true" total_items="${totalItemCount}"` : '') + (data.hidden > 0 ? ` hidden_skipped="${data.hidden}"` : '');
   const headerLines = [
     `<state step="${state.step}" title="${escapeXml(title)}" url="${escapeXml(url)}"${truncatedAttr}>`,
     `  <meta view="${viewport[0]}x${viewport[1]}" scroll="${scroll[0]},${scroll[1]}" />`,
@@ -418,6 +494,27 @@ function buildXml(data, state, isDiff) {
 // In-page "DOM quiet for quiet ms (or max ms)" wait, as source text for embedding in other evaluates.
 const SETTLE_PROMISE = (quiet, max) => `await new Promise(res=>{let t;const done=()=>{o.disconnect();res(1)};const o=new MutationObserver(()=>{clearTimeout(t);t=setTimeout(done,${Number(quiet)})});o.observe(document,{subtree:true,childList:true,attributes:true,characterData:true});t=setTimeout(done,${Number(quiet)});setTimeout(done,${Number(max)});});\n`;
 
+// Page-side helpers shared by snapshot/find/act. Elements a person could not see (display:none,
+// zero size, near-zero opacity or font, off the document horizontally, aria-hidden/hidden/inert) are
+// excluded: they are the usual hiding place for prompt-injection text aimed at agents. Invisible
+// Unicode (zero-width, bidi controls, "tag" characters) is stripped from any text we return.
+const PAGE_HELPERS = `
+function vis(el){
+  try{
+    if(el.closest('[aria-hidden="true"],[hidden],[inert]'))return false;
+    const cs=getComputedStyle(el);
+    if(cs.display==='none'||cs.visibility==='hidden'||cs.visibility==='collapse'||parseFloat(cs.opacity)<0.05)return false;
+    const r=el.getBoundingClientRect();
+    if(r.width<2||r.height<2)return false;
+    if(parseFloat(cs.fontSize)<2&&!/^(input|select|textarea|button)$/i.test(el.tagName))return false;
+    const dw=document.documentElement.scrollWidth;
+    if(r.right+window.scrollX<=0||r.left+window.scrollX>=dw)return false;
+    return true;
+  }catch(e){return true;}
+}
+function clean(s){return String(s).replace(/[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF]|[\\u{E0000}-\\u{E007F}]/gu,'');}
+`;
+
 // --- Snapshot JS builder ---
 function snapshotJs(mode, region, maxItems, settleOpts) {
   const mStr = JSON.stringify(mode || 'interactive');
@@ -426,8 +523,8 @@ function snapshotJs(mode, region, maxItems, settleOpts) {
   const startN = eidCounter;
 
   return `(async function(){
-${settleOpts ? SETTLE_PROMISE(settleOpts.quiet, settleOpts.max) : ''}try{
-let n=${startN};
+${settleOpts ? SETTLE_PROMISE(settleOpts.quiet, settleOpts.max) : ''}${PAGE_HELPERS}try{
+let n=${startN};let hid=0;
 function kind(el){
   const t=el.tagName.toLowerCase(),r=(el.getAttribute('role')||'').toLowerCase(),ty=(el.type||'').toLowerCase();
   if(t==='button'||r==='button'||ty==='button'||ty==='submit'||ty==='reset')return'btn';
@@ -442,7 +539,7 @@ function kind(el){
   return'elt';
 }
 function txt(el){
-  return(el.getAttribute('aria-label')||el.textContent||el.value||el.getAttribute('placeholder')||el.getAttribute('title')||'').trim().replace(/\\s+/g,' ').slice(0,80);
+  return clean(el.getAttribute('aria-label')||el.textContent||el.value||el.getAttribute('placeholder')||el.getAttribute('title')||'').trim().replace(/\\s+/g,' ').slice(0,80);
 }
 function ex(el){
   const k=kind(el),t=txt(el),eid=k+'-'+(++n);
@@ -484,16 +581,16 @@ if(!scopeEl){
   for(const lm of lms){
     const c=document.querySelector(lm.q);
     if(!c)continue;
-    const items=[...c.querySelectorAll(sel)].filter(e=>{if(assigned.has(e))return false;assigned.add(e);return true;}).slice(0,maxN).map(ex);
+    const items=[...c.querySelectorAll(sel)].filter(e=>{if(assigned.has(e))return false;assigned.add(e);if(!vis(e)){hid++;return false;}return true;}).slice(0,maxN).map(ex);
     if(items.length)regions.push({name:lm.name,items});
   }
-  const rem=[...document.body.querySelectorAll(sel)].filter(e=>!assigned.has(e)).slice(0,maxN).map(ex);
+  const rem=[...document.body.querySelectorAll(sel)].filter(e=>{if(assigned.has(e))return false;if(!vis(e)){hid++;return false;}return true;}).slice(0,maxN).map(ex);
   if(rem.length)regions.push({name:'page',items:rem});
 }else{
-  const items=[...root.querySelectorAll(sel)].slice(0,maxN).map(ex);
+  const items=[...root.querySelectorAll(sel)].filter(e=>{if(!vis(e)){hid++;return false;}return true;}).slice(0,maxN).map(ex);
   regions=[{name:'content',items}];
 }
-return JSON.stringify({info,regions,nextN:n});
+return JSON.stringify({info,regions,nextN:n,hidden:hid});
 }catch(e){return JSON.stringify({error:e.message});}
 })()`;
 }
@@ -506,6 +603,7 @@ async function takeSnapshot(client, resolvedTabId, opts = {}) {
   const raw = result?.result?.value;
   if (!raw) throw new Error(result?.exceptionDetails ? 'Snapshot script failed' : 'Snapshot returned no value');
   const data = JSON.parse(raw);
+  if (data.info) { const b = domainBlocks(data.info.url, 'read'); if (b) return `<permission_denied>${escapeXml(b.reason)}</permission_denied>`; }
   if (typeof data.nextN === 'number') eidCounter = data.nextN;
   // when the caller knows the URL from before the action, decide diff-vs-baseline from the
   // snapshot itself instead of paying another round trip to ask the page for location.href
@@ -585,6 +683,7 @@ async function afterAction(client, target, ctx, snap, quiet = 50, max = 400) {
 }
 
 async function actNavigate(client, target, url, snap = null) {
+  { const b = domainBlocks(url, 'read'); if (b) return { denied: b }; }
   // register the listener BEFORE navigating: awaiting the event afterwards can miss it entirely
   const loadW = watch(client, 'Page.loadEventFired', 15000);
   const r = await client.Page.navigate({ url });
@@ -603,12 +702,17 @@ async function actClick(client, target, raw, snap = null) {
       if(!el)return null;
       el.scrollIntoView({block:'center',inline:'center'});
       const r=el.getBoundingClientRect();
-      return JSON.stringify({x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2),tag:el.tagName.toLowerCase(),href:el.href||'',url:location.href});
+      const f=el.closest('form');const ty=(el.getAttribute('type')||'').toLowerCase();const tg=el.tagName.toLowerCase();
+      const submits=!!f&&((tg==='button'&&(ty===''||ty==='submit'))||(tg==='input'&&(ty==='submit'||ty==='image')));
+      return JSON.stringify({x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2),tag:el.tagName.toLowerCase(),href:el.href||'',url:location.href,submits});
     })()`,
     returnByValue: true
   });
   if (!elResult?.result?.value) return { error: `Element not found: ${raw}` };
   const el = JSON.parse(elResult.result.value);
+  { const b = domainBlocks(el.url, 'write'); if (b) return { denied: b }; }
+  if (el.submits) { const p = checkPermission('form_submit'); if (!p.allowed) return { denied: p }; }
+  if (el.href && el.tag === 'a' && /^https?:/i.test(el.href)) { const b = domainBlocks(el.href, 'read'); if (b) return { denied: b }; }
   const ctx = { ...watchNav(client), prevUrl: el.url };
   try {
     if (el.href && el.tag === 'a' && /^https?:/i.test(el.href)) {
@@ -628,22 +732,30 @@ async function actClick(client, target, raw, snap = null) {
 }
 
 async function actFill(client, target, raw, value, snap = null) {
+  const allowSensitive = checkPermission('sensitive_input').allowed;
   const resolved = EID_RE.test(raw) ? `[data-eid="${raw}"]` : raw;
   const r = await client.Runtime.evaluate({
     expression: `(function(){
       const el=document.querySelector(${JSON.stringify(resolved)});
       if(!el)return'Not found';
+      const ty=(el.getAttribute('type')||'').toLowerCase();const ac=(el.getAttribute('autocomplete')||'').toLowerCase();
+      const nm=((el.getAttribute('name')||'')+' '+(el.id||'')).toLowerCase();
+      const sensitive=ty==='password'||/^(cc-|one-time-code|new-password|current-password)/.test(ac)||/(card.?num|cvv|cvc|ssn|social.?sec)/.test(nm);
+      if(sensitive&&!${allowSensitive})return JSON.stringify({sensitive:true,url:location.href});
       el.focus();
       const desc=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value');
       if(desc&&desc.set)desc.set.call(el,${JSON.stringify(value)});
       else el.value=${JSON.stringify(value)};
       el.dispatchEvent(new Event('input',{bubbles:true}));
       el.dispatchEvent(new Event('change',{bubbles:true}));
-      return'ok';
+      return JSON.stringify({ok:true,url:location.href});
     })()`,
     returnByValue: true
   });
   if (r?.result?.value === 'Not found') return { error: `Element not found: ${raw}` };
+  const fr = JSON.parse(r?.result?.value || '{}');
+  { const b = fr.url ? domainBlocks(fr.url, 'write') : null; if (b) return { denied: b }; }
+  if (fr.sensitive) return { denied: { reason: "This is a password / payment / one-time-code field; agent input there is blocked. The user can allow it with 'auren-perm set sensitive_input allow'." } };
   // fill never navigates by itself, so no navigation watch is needed
   return afterAction(client, target, { navW: { fired: false, cancel() {} }, loadW: { promise: Promise.resolve(true), cancel() {} }, cancel() {} }, snap, 30, 150);
 }
@@ -668,7 +780,10 @@ const KEYS = {
 async function actPress(client, target, key, snap = null) {
   const k = KEYS[key];
   if (!k) return { error: `Unsupported key '${key}'. Supported: ${Object.keys(KEYS).join(', ')}` };
-  const prevUrl = await liveUrl(client);
+  const st0 = JSON.parse((await client.Runtime.evaluate({ expression: `JSON.stringify({url:location.href,inForm:!!(document.activeElement&&document.activeElement.form)})`, returnByValue: true }))?.result?.value || '{}');
+  { const b = domainBlocks(st0.url || '', 'write'); if (b) return { denied: b }; }
+  if (key === 'Enter' && st0.inForm) { const p = checkPermission('form_submit'); if (!p.allowed) return { denied: p }; }
+  const prevUrl = st0.url || '';
   const ctx = { ...watchNav(client), prevUrl };
   try {
     await Promise.all([
@@ -702,6 +817,7 @@ const errXml = (tool, msg) => ({ content: [{ type: 'text', text: `<error tool="$
 // --- MCP server ---
 function buildServer() {
   const server = new McpServer({ name: 'auren-browser', version: '2.1.2' });
+  instrument(server);
 
   server.registerTool('browser_get_tabs', {
     description: 'List all open tabs in Auren',
@@ -751,6 +867,7 @@ function buildServer() {
       if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) return errXml('browser_navigate', 'Only http(s) URLs are allowed');
       return await withCDP(tab_id, async (client, target) => {
         const r = await actNavigate(client, target, url, { mode: 'interactive', isDiff: false });
+        if (r.denied) return denied(r.denied);
         if (r.error) return errXml('browser_navigate', r.error);
         return { content: [{ type: 'text', text: r.xml }] };
       });
@@ -769,6 +886,7 @@ function buildServer() {
         const raw = eid || selector;
         if (!raw) return errXml('browser_click', 'Provide eid or selector');
         const r = await actClick(client, target, raw, { mode: 'interactive' });
+        if (r.denied) return denied(r.denied);
         if (r.error) return errXml('browser_click', r.error);
         return { content: [{ type: 'text', text: r.xml }] };
       });
@@ -787,6 +905,7 @@ function buildServer() {
         const raw = eid || selector;
         if (!raw) return errXml('browser_fill', 'Provide eid or selector');
         const r = await actFill(client, target, raw, value, { mode: 'interactive', isDiff: true });
+        if (r.denied) return denied(r.denied);
         if (r.error) return errXml('browser_fill', r.error);
         return { content: [{ type: 'text', text: r.xml }] };
       });
@@ -843,6 +962,7 @@ function buildServer() {
         }
         if (action === 'click') {
           const r = await actClick(client, target, found.eid, { mode: 'interactive' });
+          if (r.denied) return denied(r.denied);
           if (r.error) return errXml('browser_act', r.error);
           return { content: [{ type: 'text', text: r.xml }] };
         }
@@ -934,7 +1054,7 @@ function buildServer() {
         }
 
         const r = await client.Runtime.evaluate({
-          expression: `(function(){const el=${selExpr};if(!el)return'[not found]';const t=(el.innerText||el.textContent||'').replace(/\n{3,}/g,'\n\n').trim();return t.length>${cap}?t.slice(0,${cap})+'\n[truncated]':t;})()`,
+          expression: `(function(){const el=${selExpr};if(!el)return'[not found]';const t=(el.innerText||el.textContent||'').replace(/[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF]|[\\u{E0000}-\\u{E007F}]/gu,'').replace(/\\n{3,}/g,'\\n\\n').trim();return t.length>${cap}?t.slice(0,${cap})+'\\n[truncated]':t;})()`,
           returnByValue: true
         });
         return { content: [{ type: 'text', text: r?.result?.value ?? '[no content]' }] };
@@ -1076,13 +1196,13 @@ function buildServer() {
               if (st.op === 'navigate') {
                 let u; try { u = new URL(st.url); } catch { u = null; }
                 if (!u || !['http:', 'https:'].includes(u.protocol)) err = 'Only http(s) URLs are allowed';
-                else { const r = await actNavigate(client, target, st.url); err = r.error ?? null; navigatedSinceView = true; }
+                else { const r = await actNavigate(client, target, st.url); err = r.error ?? r.denied?.reason ?? null; navigatedSinceView = true; }
               } else if (st.op === 'click') {
-                if (!raw) err = 'Provide eid or selector'; else { const r = await actClick(client, target, raw); err = r.error ?? null; if (r.didNavigate) navigatedSinceView = true; }
+                if (!raw) err = 'Provide eid or selector'; else { const r = await actClick(client, target, raw); err = r.error ?? r.denied?.reason ?? null; if (r.didNavigate) navigatedSinceView = true; }
               } else if (st.op === 'fill') {
-                if (!raw) err = 'Provide eid or selector'; else if (st.value === undefined) err = 'fill requires value'; else err = (await actFill(client, target, raw, st.value)).error ?? null;
+                if (!raw) err = 'Provide eid or selector'; else if (st.value === undefined) err = 'fill requires value'; else { const r = await actFill(client, target, raw, st.value); err = r.error ?? r.denied?.reason ?? null; }
               } else if (st.op === 'press') {
-                const r = await actPress(client, target, st.key ?? ''); err = r.error ?? null; if (r.didNavigate) navigatedSinceView = true;
+                const r = await actPress(client, target, st.key ?? ''); err = r.error ?? r.denied?.reason ?? null; if (r.didNavigate) navigatedSinceView = true;
               } else if (st.op === 'scroll') {
                 await actScroll(client, target, st.direction ?? 'down', st.pixels ?? 500);
               } else if (st.op === 'wait_for') {
@@ -1090,7 +1210,7 @@ function buildServer() {
               } else if (st.op === 'read') {
                 const cap = Math.min(Number(st.max_chars) || 4000, 12000);
                 const sel = !st.region ? 'document.body' : EID_RE.test(st.region) ? `document.querySelector('[data-eid="${st.region}"]')` : `document.querySelector(${JSON.stringify(st.region)})`;
-                const r = await client.Runtime.evaluate({ expression: `(function(){const el=${sel};if(!el)return'[not found]';const t=(el.innerText||el.textContent||'').replace(/\n{3,}/g,'\n\n').trim();return t.length>${cap}?t.slice(0,${cap})+'\n[truncated]':t;})()`, returnByValue: true });
+                const r = await client.Runtime.evaluate({ expression: `(function(){const el=${sel};if(!el)return'[not found]';const t=(el.innerText||el.textContent||'').replace(/[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF]|[\\u{E0000}-\\u{E007F}]/gu,'').replace(/\\n{3,}/g,'\\n\\n').trim();return t.length>${cap}?t.slice(0,${cap})+'\\n[truncated]':t;})()`, returnByValue: true });
                 body = r?.result?.value ?? ''; lastView = true;
               } else if (st.op === 'snapshot') {
                 body = await takeSnapshot(client, target.id, { mode: st.mode ?? 'interactive', region: st.region ?? null, maxItems: st.max_items, isDiff: false }); lastView = true; navigatedSinceView = false;
@@ -1328,6 +1448,25 @@ admin.post('/history', (req, res) => {
     rows: historyDb.prepare('SELECT COUNT(*) n FROM visits').get().n });
 });
 admin.delete('/history', (_, res) => { clearHistory(); res.json({ ok: true }); });
+admin.post('/panic', (req, res) => {
+  const p = loadPerms(); p.panic = req.body?.on !== false; savePerms(p);
+  res.json({ ok: true, panic: p.panic });
+});
+admin.post('/domains', (req, res) => {
+  const { host, rule } = req.body ?? {};
+  if (typeof host !== 'string' || !/^[a-z0-9.-]+$/i.test(host)) return res.status(400).json({ error: 'bad host' });
+  if (rule !== null && !['deny', 'readonly', 'allow'].includes(rule)) return res.status(400).json({ error: 'rule must be deny|readonly|allow|null' });
+  const p = loadPerms(); p.domains = p.domains ?? {};
+  if (rule === null) delete p.domains[host.toLowerCase()]; else p.domains[host.toLowerCase()] = rule;
+  savePerms(p);
+  res.json({ ok: true, domains: p.domains });
+});
+admin.get('/audit', (req, res) => {
+  const n = Math.min(Math.max(Number(req.query.n) || 50, 1), 1000);
+  let lines = [];
+  try { lines = fs.readFileSync(AUDIT_PATH, 'utf8').trim().split('\n').slice(-n); } catch {}
+  res.json({ entries: lines.map(l => { try { return JSON.parse(l); } catch { return { raw: l }; } }) });
+});
 admin.post('/revoke', (_, res) => { sessionGrants.clear(); res.json({ ok: true }); });
 app.use('/admin', admin);
 
