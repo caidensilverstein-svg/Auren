@@ -29,7 +29,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const w = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
       let n;
       while ((n = w.nextNode())) {
-        if (n.nodeType === 3) { const t = n.textContent.trim(); if (t) out.text.push(t); }
+        if (n.nodeType === 3) { const pn = n.parentNode && n.parentNode.nodeName; if (pn === 'STYLE' || pn === 'SCRIPT') continue; const t = n.textContent.trim(); if (t) out.text.push(t); }
         else {
           if (n.shadowRoot) walk(n.shadowRoot);
           for (const a of ['href','src','srcset','action']) { const v = n.getAttribute && n.getAttribute(a); if (v && /^https?:/.test(v)) out.hrefs.add(v.split('?')[0]); }
