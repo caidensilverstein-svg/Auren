@@ -1,0 +1,168 @@
+# 0001-policy-constants-and-navigator-values
+# Auren fingerprint policy constants; constant hardwareConcurrency/deviceMemory; languages = [first, 
+# base] (matches Accept-Language).
+# Apply in the brave/ repo root: git apply <this file>
+
+diff --git a/third_party/blink/renderer/core/farbling/brave_session_cache.h b/third_party/blink/renderer/core/farbling/brave_session_cache.h
+--- a/third_party/blink/renderer/core/farbling/brave_session_cache.h
++++ b/third_party/blink/renderer/core/farbling/brave_session_cache.h
+@@ -33,6 +33,17 @@
+ using blink::GarbageCollected;
+ using blink::MakeGarbageCollected;
+ using blink::Supplement;
++
++// Auren fingerprint policy constants (docs/privacy/fingerprinting/policy.md).
++// They are reported whenever Shields fingerprinting protection is not OFF for
++// the context, instead of per-site random values.
++namespace auren_policy {
++inline constexpr unsigned kHardwareConcurrency = 8;
++inline constexpr float kDeviceMemoryGb = 8.0f;
++inline constexpr char kWebGlUnmaskedVendor[] = "Google Inc. (Apple)";
++inline constexpr char kWebGlUnmaskedRenderer[] =
++    "ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)";
++}  // namespace auren_policy
+ 
+ enum FarbleKey : uint64_t {
+   kNone,
+diff --git a/chromium_src/third_party/blink/renderer/core/execution_context/navigator_base.cc b/chromium_src/third_party/blink/renderer/core/execution_context/navigator_base.cc
+--- a/chromium_src/third_party/blink/renderer/core/execution_context/navigator_base.cc
++++ b/chromium_src/third_party/blink/renderer/core/execution_context/navigator_base.cc
+@@ -20,40 +20,16 @@
+ 
+ void ApplyBraveHardwareConcurrencyOverride(blink::ExecutionContext* context,
+                                            unsigned int* hardware_concurrency) {
+-  static constexpr unsigned kFakeMinProcessors = 2;
+-  static constexpr unsigned kFakeMaxProcessors = 8;
+-  unsigned true_value =
+-      static_cast<unsigned>(base::SysInfo::NumberOfProcessors());
+-  if (true_value <= 2) {
+-    *hardware_concurrency = true_value;
+-    return;
++  // Auren: one constant, identical in every context (main thread, workers,
++  // iframes) instead of a per-site random value. Random values below the real
++  // core count (3 or 9 on a 10-core Mac) are numbers no real machine reports
++  // and are trivially detectable.
++  if (brave::GetBraveFarblingLevelFor(
++          context, ContentSettingsType::BRAVE_WEBCOMPAT_HARDWARE_CONCURRENCY,
++          BraveFarblingLevel::OFF) != BraveFarblingLevel::OFF) {
++    *hardware_concurrency = brave::auren_policy::kHardwareConcurrency;
+   }
+-  unsigned farbled_value = true_value;
+-  switch (brave::GetBraveFarblingLevelFor(
+-      context, ContentSettingsType::BRAVE_WEBCOMPAT_HARDWARE_CONCURRENCY,
+-      BraveFarblingLevel::OFF)) {
+-    case BraveFarblingLevel::OFF: {
+-      break;
+-    }
+-    case BraveFarblingLevel::MAXIMUM: {
+-      true_value = kFakeMaxProcessors;
+-      // "Maximum" behavior is "balanced" behavior but with a fake maximum,
+-      // so fall through here.
+-      [[fallthrough]];
+-    }
+-    case BraveFarblingLevel::BALANCED: {
+-      brave_shields::FarblingPRNG prng =
+-          brave::BraveSessionCache::From(*context).MakePseudoRandomGenerator();
+-      farbled_value =
+-          kFakeMinProcessors + (prng() % (true_value + 1 - kFakeMinProcessors));
+-      break;
+-    }
+-    default:
+-      NOTREACHED();
+-  }
+-  *hardware_concurrency = farbled_value;
+ }
+-
+ }  // namespace blink::probe
+ 
+ #define userAgent userAgent_ChromiumImpl
+diff --git a/chromium_src/third_party/blink/renderer/core/frame/navigator_device_memory.cc b/chromium_src/third_party/blink/renderer/core/frame/navigator_device_memory.cc
+--- a/chromium_src/third_party/blink/renderer/core/frame/navigator_device_memory.cc
++++ b/chromium_src/third_party/blink/renderer/core/frame/navigator_device_memory.cc
+@@ -17,54 +17,16 @@
+ using brave_shields::FarblingPRNG;
+ 
+ float FarbleDeviceMemory(blink::ExecutionContext* context) {
+-  float true_value =
++  const float true_value =
+       blink::ApproximatedDeviceMemory::GetApproximatedDeviceMemory();
+-  BraveFarblingLevel farbling_level = brave::GetBraveFarblingLevelFor(
+-      context, ContentSettingsType::BRAVE_WEBCOMPAT_DEVICE_MEMORY,
+-      BraveFarblingLevel::OFF);
+-  // If Brave Shields are down or anti-fingerprinting is off for this site,
+-  // return the true value.
+-  if (farbling_level == BraveFarblingLevel::OFF) {
++  // Auren: constant policy value whenever fingerprinting protection is on.
++  if (brave::GetBraveFarblingLevelFor(
++          context, ContentSettingsType::BRAVE_WEBCOMPAT_DEVICE_MEMORY,
++          BraveFarblingLevel::OFF) == BraveFarblingLevel::OFF) {
+     return true_value;
+   }
+-
+-  // See kMinMemory and kMaxMemory values in
+-  // ApproximatedDeviceMemory::CalculateAndSetApproximatedDeviceMemory
+-  std::vector<float> valid_values = {2.0, 4.0, 8.0, 16.0, 32.0};
+-
+-  size_t min_farbled_index;
+-  size_t max_farbled_index;
+-  if (farbling_level == BraveFarblingLevel::MAXIMUM) {
+-    // If anti-fingerprinting is at maximum, select a pseudo-random valid value
+-    // based on domain + sesson key.
+-    min_farbled_index = 0;
+-    max_farbled_index = valid_values.size() - 1;
+-  } else {
+-    // If anti-fingerprinting is at default level, select a pseudo-random valid
+-    // value between 4.0 and the true value (unless the true value is 2.0 in
+-    // which case just return that).
+-    auto true_it = std::ranges::find(valid_values, true_value);
+-    size_t true_index;
+-    // Get index into |valid_values| of the true value. If it's not found,
+-    // assume the last index. (This should not happen, but it allows us to
+-    // fail closed instead of failing open.)
+-    if (true_it != valid_values.end()) {
+-      true_index = std::distance(valid_values.begin(), true_it);
+-    } else {
+-      true_index = valid_values.size() - 1;
+-    }
+-    min_farbled_index = 1;
+-    max_farbled_index = true_index;
+-    if (max_farbled_index <= min_farbled_index) {
+-      return valid_values[min_farbled_index];
+-    }
+-  }
+-  FarblingPRNG prng =
+-      BraveSessionCache::From(*context).MakePseudoRandomGenerator();
+-  return valid_values[min_farbled_index +
+-                      (prng() % (max_farbled_index + 1 - min_farbled_index))];
++  return brave::auren_policy::kDeviceMemoryGb;
+ }
+-
+ }  // namespace brave
+ 
+ namespace blink {
+diff --git a/chromium_src/third_party/blink/renderer/core/frame/navigator_language.cc b/chromium_src/third_party/blink/renderer/core/frame/navigator_language.cc
+--- a/chromium_src/third_party/blink/renderer/core/frame/navigator_language.cc
++++ b/chromium_src/third_party/blink/renderer/core/frame/navigator_language.cc
+@@ -32,11 +32,18 @@
+     languages_.push_back("en-US");
+     languages_.push_back("en");
+   } else {
+-    // If anti-fingerprinting is on at its default level, remove all but the
+-    // first language. (Note: this method requires a non-empty list, which the
+-    // upstream code guarantees.)
++    // Auren: [first language, its base language] - exactly what the
++    // Accept-Language header carries (see
++    // brave_reduce_language_network_delegate_helper.cc) and what stock Chrome
++    // reports for a one-language profile ("en-US" -> ["en-US", "en"]).
++    // (Note: this method requires a non-empty list, which the upstream code
++    // guarantees.)
+     languages_.Shrink(1);
++    const std::string first = languages_[0].Ascii();
++    const size_t dash = first.find('-');
++    if (dash != std::string::npos && dash > 0) {
++      languages_.push_back(String(first.substr(0, dash).c_str()));
++    }
+   }
+ }
+-
+ }  // namespace blink
