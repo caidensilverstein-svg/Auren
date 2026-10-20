@@ -8,5 +8,9 @@
     "express": "^4.18.0",
     "zod": "^3.0.0",
     "better-sqlite3": "^12.11.1"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test --test-timeout=60000 test/e2e.test.js"
   }
 }
