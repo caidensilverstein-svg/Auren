@@ -170,6 +170,39 @@ test('fill sets an input value', { skip }, async () => {
   await c.close();
 });
 
+test('browser_exec runs a multi-step flow in one call, with press and wait_for', { skip }, async () => {
+  const c = await connect();
+  const out = await call(c, 'browser_exec', { steps: [
+    { op: 'navigate', url: `http://127.0.0.1:${ports.web}/` },
+    { op: 'click', selector: '#b' },
+    { op: 'fill', selector: '#t', value: 'Grace' },
+    { op: 'press', key: 'Enter' },
+    { op: 'wait_for', selector: '#t' },
+    { op: 'js', code: 'JSON.stringify([window.n, document.getElementById("t").value])' },
+  ] });
+  assert.match(out, /<exec steps="6" completed="6" ok="true">/);
+  assert.match(out, /\[1,\\"Grace\\"\]/);
+  await c.close();
+});
+
+test('browser_exec stops at the first failing step and enforces permissions per step', { skip }, async () => {
+  const c = await connect();
+  const out = await call(c, 'browser_exec', { steps: [
+    { op: 'navigate', url: `http://127.0.0.1:${ports.web}/` },
+    { op: 'click', selector: '#does-not-exist' },
+    { op: 'click', selector: '#b' },
+  ] });
+  assert.match(out, /completed="1" ok="false"/);
+  assert.match(out, /Element not found/);
+  assert.doesNotMatch(out, /n="3"/);
+  const bad = await call(c, 'browser_exec', { steps: [{ op: 'navigate', url: 'javascript:alert(1)' }] });
+  assert.match(bad, /Only http\(s\) URLs/);
+  await call(c, 'browser_set_permission', { action: 'js_execute', level: 'deny' });
+  assert.match(await call(c, 'browser_exec', { steps: [{ op: 'js', code: '1' }] }), /denied by permissions policy/);
+  await admin('POST', '/revoke');
+  await c.close();
+});
+
 test('password values are redacted in snapshots', { skip }, async () => {
   const c = await connect();
   const out = await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/` });
