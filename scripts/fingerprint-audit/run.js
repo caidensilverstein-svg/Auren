@@ -86,7 +86,7 @@ async function main() {
         const bin = opt('browser'); if (!bin) throw new Error('need --browser <path> or --cdp host:port');
         const extra = (opt('args', '') || '').split(' ').filter(Boolean);
         for (let s = 0; s < sessions; s++) {
-          launched = await launchBrowser({ browser: bin, headless: flag('headless'), extraArgs: extra, log: flag('verbose') });
+          launched = await launchBrowser({ browser: bin, headless: flag('headless'), extraArgs: extra, log: flag('verbose'), port: +opt('browser-port', 0), profileDir: opt('profile-root') ? path.join(opt('profile-root'), 's' + s) : null });
           const { ws, version } = await browserWsUrl('127.0.0.1:' + launched.port); versionInfo = version; cdp = await CDP.connect(ws);
           try { await doSession(s, cdp, null); } finally { cdp.close(); await launched.close(); launched = null; }
         }

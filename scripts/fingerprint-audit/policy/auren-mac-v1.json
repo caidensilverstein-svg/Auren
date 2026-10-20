@@ -150,7 +150,7 @@
    "op": "eq",
    "value": 8,
    "severity": "fail",
-   "desc": "Chromium caps at 8; random 2..32 values are detectable lies"
+   "desc": "fixed constant; Chromium 151 desktop buckets to 2..32 so 8 is plausible"
   },
   {
    "id": "nav.webdriver_false",

@@ -1,6 +1,6 @@
 /* Auren fingerprint collector (runs in the page).
  *
- *   await window.AurenFP.collect({ only: ['navigator', ...], workerUrl: '/worker.js' })
+ *   await window.FPAudit.collect({ only: ['navigator', ...], workerUrl: '/worker.js' })
  *     -> { schema, collectedAt, location, surfaces: { <name>: { data, volatile, error? } } }
  *
  * Rules for adding a vector (see docs/privacy/fingerprinting/harness.md):
@@ -70,7 +70,8 @@
     data.hasNavigatorBrave = 'brave' in n;
     data.braveIsBrave = null;
     if (n.brave && typeof n.brave.isBrave === 'function') { try { data.braveIsBrave = await n.brave.isBrave(); } catch (e) { data.braveIsBrave = 'error'; } }
-    data.connection = tryv(() => n.connection ? { effectiveType: n.connection.effectiveType, downlink: n.connection.downlink, rtt: n.connection.rtt, saveData: n.connection.saveData, type: n.connection.type } : null);
+    data.connection = tryv(() => (n.connection ? { present: true } : undefined));
+    const volatile = { connection: tryv(() => n.connection ? { effectiveType: n.connection.effectiveType, downlink: n.connection.downlink, rtt: n.connection.rtt, saveData: n.connection.saveData, type: n.connection.type } : null) };
     data.userActivation = tryv(() => !!n.userActivation);
     data.windowChromeKeys = tryv(() => (window.chrome ? Object.getOwnPropertyNames(window.chrome).sort() : null));
     data.hasChromeRuntime = tryv(() => !!(window.chrome && window.chrome.runtime));
@@ -81,7 +82,7 @@
     data.apiPresence = {};
     for (const k of ['getBattery', 'bluetooth', 'usb', 'hid', 'serial', 'gpu', 'ml', 'keyboard', 'wakeLock', 'credentials', 'mediaSession', 'scheduling', 'storageBuckets', 'xr', 'share', 'canShare', 'clipboard', 'contacts', 'locks', 'presentation', 'virtualKeyboard', 'windowControlsOverlay', 'managed', 'login', 'ink', 'devicePosture', 'mediaCapabilities', 'permissions', 'serviceWorker', 'sendBeacon', 'requestMIDIAccess', 'getGamepads', 'vibrate', 'setAppBadge', 'getInstalledRelatedApps', 'joinAdInterestGroup', 'runAdAuction', 'cookieDeprecationLabel', 'userAgentData', 'deprecatedRunAdAuctionEnforcesKAnonymity', 'protectedAudience', 'getAutoplayPolicy', 'requestMediaKeySystemAccess']) data.apiPresence['navigator.' + k] = k in n;
     for (const k of ['queryLocalFonts', 'showOpenFilePicker', 'showDirectoryPicker', 'getScreenDetails', 'EyeDropper', 'Accelerometer', 'Gyroscope', 'Magnetometer', 'AmbientLightSensor', 'LinearAccelerationSensor', 'AbsoluteOrientationSensor', 'GravitySensor', 'Notification', 'PushManager', 'PaymentRequest', 'BarcodeDetector', 'FaceDetector', 'TextDetector', 'Highlight', 'CSSPaintWorklet', 'FileSystemObserver', 'SpeechRecognition', 'webkitSpeechRecognition', 'VideoDecoder', 'AudioDecoder', 'MediaStreamTrackProcessor', 'RTCPeerConnection', 'Float16Array', 'Iterator', 'Observable', 'CloseWatcher', 'Sanitizer', 'Temporal', 'ViewTransition', 'NavigateEvent', 'PressureObserver', 'LanguageDetector', 'Translator', 'Summarizer', 'LanguageModel', 'Writer', 'Rewriter']) data.apiPresence['window.' + k] = k in window;
-    return { data };
+    return { data, volatile };
   };
 
   V.userAgentData = async () => {
@@ -496,7 +497,7 @@
       crossOriginIsolated: window.crossOriginIsolated, sharedArrayBuffer: typeof SharedArrayBuffer !== 'undefined',
       perfNowResolutionBucket: bucket(minD), perfNowHasJitter: sorted.length > 2 && new Set(sorted.slice(0, 20).map((d) => +(d / minD).toFixed(1))).size > 3,
       dateNowMinDelta: [...dn].sort((a, b) => a - b)[0] || 0,
-      performanceMemoryLimit: pm, timeOriginFractional: String(performance.timeOrigin).includes('.'),
+      performanceMemoryLimit: pm,
       rafTimestampDecimals: Math.max(...raf.map((t) => (String(t).split('.')[1] || '').length)),
     };
     return { data, volatile: { perfNowMinDeltaMs: minD, perfNowDistinctDeltas: sorted.length, perfNowFirstDeltas: sorted.slice(0, 6), rafs: raf, sampleStart: t0 } };
@@ -570,10 +571,14 @@
       try { const r = await fetch(opts.tlsBase + '/tls?n=' + Math.random().toString(36).slice(2), { cache: 'no-store', mode: 'cors' }); tls = await r.json(); } catch (e) { tls = { error: String(e) }; }
     }
     const h = window.__navHeaders || null;
-    const data = { fetchHeaders: nav && nav.headers, fetchHeaderOrder: nav && nav.order, fetchHeaderOrderNoCreds: nav2 && nav2.order, httpVersion: nav && nav.httpVersion, navigationHeaders: h && h.headers, navigationHeaderOrder: h && h.order, clientHintsOnFetch: nav && nav.clientHints };
+    const lowHints = new Set(['sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform']);
+    const dropHint = (k) => /^sec-ch-/.test(k) && !lowHints.has(k) || k === 'device-memory' || k === 'dpr' || k === 'viewport-width';
+    const fh = {}; for (const [k, v] of Object.entries((nav && nav.headers) || {})) if (!dropHint(k)) fh[k] = v;
+    const ord = (o) => (o || []).filter((k) => !dropHint(k));
+    const data = { fetchHeaders: fh, fetchHeaderOrder: ord(nav && nav.order), fetchHeaderOrderNoCreds: ord(nav2 && nav2.order), httpVersion: nav && nav.httpVersion, navigationHeaderOrderLowEntropy: ord(h && h.order), highEntropyHintsSentOnFetch: Object.keys((nav && nav.clientHints) || {}).filter(dropHint).sort() };
     if (tls && tls.hello) data.tls = { ja4: tls.hello.ja4, ja3Sorted: tls.hello.ja3Sorted, alpn: tls.alpn, greasePresent: tls.hello.greasePresent, cipherCount: tls.hello.cipherCount, groups: tls.hello.groups, sigAlgs: tls.hello.sigAlgs, tlsVersionOffered: tls.hello.tlsVersionOffered, h2: tls.h2 || null, h1: tls.h1 || null };
     else if (tls) data.tls = { unavailable: tls.error || 'no-hello' };
-    return { data, volatile: { tlsRaw: tls && tls.hello && { ja3: tls.hello.ja3, extensionOrder: tls.hello.extensionOrder } } };
+    return { data, volatile: { tlsRaw: tls && tls.hello && { ja4Raw: tls.hello.ja4Raw, ja3: tls.hello.ja3, extensionOrder: tls.hello.extensionOrder }, navigationHeaders: h && h.headers, navigationHeaderOrderFull: h && h.order, clientHintValuesOnFetch: nav && nav.clientHints } };
   };
 
   /* ---- automation hygiene ---- */
@@ -651,7 +656,7 @@
       if (msg) add('sandboxed_iframe_values_equal', msg.hc === navigator.hardwareConcurrency && msg.dm === navigator.deviceMemory && msg.l === Array.from(navigator.languages).join() && msg.ua === ua && msg.pl === navigator.plugins.length, { msg });
     } catch (e) { add('iframe_tests', null, String(e)); }
     // plausibility
-    add('deviceMemory_in_chrome_set', navigator.deviceMemory === undefined ? null : [0.25, 0.5, 1, 2, 4, 8].includes(navigator.deviceMemory), navigator.deviceMemory);
+    add('deviceMemory_in_chrome_set', navigator.deviceMemory === undefined ? null : [2, 4, 8, 16, 32].includes(navigator.deviceMemory), navigator.deviceMemory);
     add('hardwareConcurrency_plausible_integer', Number.isInteger(navigator.hardwareConcurrency) && navigator.hardwareConcurrency >= 1 && navigator.hardwareConcurrency <= 256, navigator.hardwareConcurrency);
     const pn = (nav.plugins || []).map((p) => p.name); const chromePdf = ['PDF Viewer', 'Chrome PDF Viewer', 'Chromium PDF Viewer', 'Microsoft Edge PDF Viewer', 'WebKit built-in PDF'];
     add('plugins_are_chrome_standard_five', navigator.pdfViewerEnabled ? (pn.length === 5 && chromePdf.every((n) => pn.includes(n))) : pn.length === 0, pn);
@@ -707,12 +712,12 @@
     for (const name of ORDER) {
       if (want && !want.has(name)) continue;
       const s0 = performance.now();
-      try { const r = await V[name](opts, ctx); surfaces[name] = { data: r.data, volatile: Object.assign({}, r.volatile || {}, { ms: Math.round(performance.now() - s0) }) }; if (name === 'headers') ctx.echo = { headers: (r.data.fetchHeaders || {}) }; }
+      try { const r = await V[name](opts, ctx); surfaces[name] = { data: r.data, volatile: Object.assign({}, r.volatile || {}, { ms: Math.round(performance.now() - s0) }) }; if (name === 'headers') ctx.echo = { headers: Object.assign({}, r.data.fetchHeaders || {}, r.volatile && r.volatile.clientHintValuesOnFetch || {}) }; }
       catch (e) { surfaces[name] = { data: null, error: String(e && e.stack || e).slice(0, 300), volatile: { ms: Math.round(performance.now() - s0) } }; }
     }
     if (ctx.worker) { const { timing, ...wdata } = ctx.worker; surfaces.workerContext = { data: wdata, volatile: { timing } }; }
     return { schema: SCHEMA, collectedAt: new Date().toISOString(), location: location.href, durationMs: Math.round(performance.now() - t0), surfaces };
   }
 
-  window.AurenFP = { collect, SCENE_SRC, version: SCHEMA, surfaceNames: ORDER.concat(['workerContext']) };
+  window.FPAudit = { collect, SCENE_SRC, version: SCHEMA, surfaceNames: ORDER.concat(['workerContext']) };
 })();

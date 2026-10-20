@@ -84,13 +84,21 @@ export async function startServers({ port = 0, tlsPort = 0, outDir = null, bind 
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'auren-fp-cert-'));
       const { key, cert } = makeCert(dir);
       const h2 = http2.createSecureServer({ key, cert, allowHTTP1: true, settings: { enablePush: false } }, handler);
+      // The h2 server listens on an internal loopback port. The public "front" port is a tiny TCP proxy that
+      // peeks the first bytes (the TLS ClientHello) before forwarding, because Node's TLS layer reads the raw
+      // handle and would not see bytes pushed back with unshift().
+      await new Promise((r) => h2.listen(0, '127.0.0.1', r));
+      const innerPort = h2.address().port;
       const front = net.createServer((sock) => {
-        sock.once('data', (chunk) => {
-          try { const d = describe(chunk); if (d) helloByPeer.set(`${sock.remoteAddress}:${sock.remotePort}`, d); } catch (e) { /* ignore */ }
-          sock.unshift(chunk); h2.emit('connection', sock);
-          sock.on('close', () => setTimeout(() => helloByPeer.delete(`${sock.remoteAddress}:${sock.remotePort}`), 30000).unref());
+        const up = net.connect(innerPort, '127.0.0.1'); let first = true; const queued = [];
+        let key = null; up.on('connect', () => { key = `${up.localAddress}:${up.localPort}`; for (const c of queued) up.write(c); queued.length = 0; });
+        sock.on('data', (chunk) => {
+          if (first) { first = false; try { const d = describe(chunk); if (d) { const k = () => { if (key) helloByPeer.set(key, d); else setImmediate(k); }; k(); } } catch (e) { /* ignore */ } }
+          if (key) up.write(chunk); else queued.push(chunk);
         });
-        sock.on('error', () => { });
+        up.on('data', (d) => sock.write(d));
+        const end = () => { sock.destroy(); up.destroy(); if (key) setTimeout(() => helloByPeer.delete(key), 30000).unref(); };
+        sock.on('error', end); up.on('error', end); sock.on('close', end); up.on('close', end);
       });
       await new Promise((r) => front.listen(tlsPort, bind, r));
       out.tlsPort = front.address().port; out.servers.push(front, h2);
