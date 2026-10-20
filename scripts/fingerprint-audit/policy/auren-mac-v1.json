@@ -334,6 +334,21 @@
    "desc": "screenX/screenY not leaking window position"
   },
   {
+   "id": "screen.avail_top_zero",
+   "path": "screen.availTop",
+   "op": "eq",
+   "value": 0,
+   "severity": "fail",
+   "desc": "screen.availTop must not reveal menu-bar/dock geometry"
+  },
+  {
+   "id": "screen.avail_left_zero",
+   "path": "screen.availLeft",
+   "op": "eq",
+   "value": 0,
+   "severity": "fail"
+  },
+  {
    "id": "screen.outer_equals_inner",
    "path": "screen.outerMinusInner",
    "op": "eq",

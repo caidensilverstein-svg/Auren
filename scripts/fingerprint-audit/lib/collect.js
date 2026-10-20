@@ -210,7 +210,7 @@
     data.putGetRoundTripDiffBytes = rt;
     // WWW'25 "majority vote" bypass of per-canvas noise: 5 canvases, identical content + a unique marker strip each
     try {
-      const N = 5, cw = 200, chh = 100, strip = 8; const arrs = [];
+      const N = 9, cw = 200, chh = 100, strip = 8; const arrs = [];
       const scene = (k) => { const cc = mk(cw, chh); const cx = cc.getContext('2d'); cx.fillStyle = `rgb(${10 + k * 40},${200 - k * 30},${30 + k * 20})`; cx.fillRect(0, 0, cw, strip); cx.translate(0, strip); drawScene(cx, cw, chh - strip); return cx; };
       // The marker strip differs per canvas, so content-keyed noise (Brave: HMAC over the whole buffer) differs per read.
       for (let k = 0; k < N; k++) arrs.push(scene(k).getImageData(0, 0, cw, chh).data.slice(cw * strip * 4));
