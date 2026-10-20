@@ -87,6 +87,19 @@ def classify(h, pats):
         return "ip-only"
     return "other"
 
+def timeline(path):
+    """Yield (seconds since first event, method, url) for each URL request."""
+    d = load(path)
+    et = {v: k for k, v in d.get("constants", {}).get("logEventTypes", {}).items()}
+    evs = d.get("events", [])
+    if not evs:
+        return
+    t0 = int(evs[0]["time"])
+    for e in evs:
+        if et.get(e.get("type")) == "URL_REQUEST_START_JOB" and "url" in (e.get("params") or {}):
+            p = e["params"]
+            yield (int(e["time"]) - t0) / 1000.0, p.get("method", "?"), p["url"].split("?")[0]
+
 def analyze(path, pats):
     d = load(path)
     c = d.get("constants", {})
@@ -156,6 +169,7 @@ def main():
     ap.add_argument("--json")
     ap.add_argument("--markdown")
     ap.add_argument("--baseline", help="previous --json output to diff against")
+    ap.add_argument("--timeline", action="store_true", help="print every URL request with its time offset")
     ap.add_argument("--ignore-ip-only", action="store_true",
                     help="do not fail on bare-IP TCP connects (name unknown)")
     a = ap.parse_args()
@@ -165,6 +179,11 @@ def main():
     except Exception as ex:
         print("cannot read netlog: %s" % ex, file=sys.stderr)
         return 2
+    if a.timeline:
+        for p in a.netlogs:
+            print("== timeline", p)
+            for t, m, u in timeline(p):
+                print("%8.1fs %-5s %s" % (t, m, u))
     rows = sorted(res.items(), key=lambda kv: (kv[1]["class"], -kv[1]["url_requests"], kv[0]))
     lines = ["| host | class | url_req | dns | sess | sample URL |", "|---|---|---|---|---|---|"]
     for h, v in rows:
