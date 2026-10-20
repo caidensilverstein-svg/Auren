@@ -15,7 +15,7 @@
   if (q.get('only')) opts.only = q.get('only').split(',');
   if (q.get('tls')) opts.tlsBase = 'https://localhost:' + q.get('tls');
   try {
-    const r = await AurenFP.collect(opts);
+    const r = await FPAudit.collect(opts);
     window.__fpResult = r; window.__fpDone = true;
     document.getElementById('s').textContent = 'done in ' + r.durationMs + ' ms';
     document.getElementById('o').textContent = JSON.stringify(r, null, 1).slice(0, 200000);

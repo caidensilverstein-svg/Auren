@@ -63,14 +63,19 @@ export function ja4(h) {
   return { a, b, c, full: `${a}_${b}_${c}` };
 }
 
+/* Session resumption / padding extensions appear or vanish between connections of the SAME browser
+ * (pre_shared_key 0x29, early_data 0x2a, padding 0x15), so the normalized variants drop them. */
+const VOLATILE_EXT = new Set([0x0029, 0x002a, 0x0015]);
+export const normalize = (h) => ({ ...h, exts: h.exts.filter((v) => !VOLATILE_EXT.has(v)) });
+
 export function describe(buf) {
   const h = parseClientHello(buf); if (!h) return null;
-  const j3 = ja3(h), j3s = ja3Sorted(h), j4 = ja4(h);
+  const j3 = ja3(h), j3s = ja3Sorted(normalize(h)), j4 = ja4(normalize(h)), j4raw = ja4(h);
   return {
-    ja4: j4.full, ja3: j3.hash, ja3Sorted: j3s.hash, ja3String: j3.string,
+    ja4: j4.full, ja4Raw: j4raw.full, ja3: j3.hash, ja3Sorted: j3s.hash, ja3String: j3.string,
     tlsVersionOffered: h.versions.filter((v) => !isGrease(v)).map(h4), cipherCount: h.ciphers.filter((v) => !isGrease(v)).length,
     extensionOrder: h.exts.map((v) => (isGrease(v) ? 'GREASE' : v)), extensionsSortedCount: h.exts.length,
-    groups: h.groups.filter((v) => !isGrease(v)).map(h4), sigAlgs: h.sigAlgs.map(h4), alpn: h.alpn, sni: h.sni,
+    groups: h.groups.filter((v) => !isGrease(v)).map(h4), sigAlgs: h.sigAlgs.filter((v) => !isGrease(v)).map(h4), alpn: h.alpn, sni: h.sni,
     greasePresent: h.exts.some(isGrease) || h.ciphers.some(isGrease),
   };
 }
