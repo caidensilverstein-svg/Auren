@@ -9,17 +9,22 @@ FRESH=0; SCEN=0
 for a in "$@"; do [ "$a" = --fresh ] && FRESH=1; [ "$a" = --scenario ] && SCEN=1; done
 A=$HOME/auren-audit
 BIN=${AUREN_BIN:-$HOME/brave-src/src/out/auren/Auren.app/Contents/MacOS/Auren}
+PORT=${AUREN_CDP_PORT:-9224}   # never 9223 (the real Auren)
 P=$A/profile-$LABEL
 [ $FRESH = 1 ] && rm -rf "$P"
 rm -f "$A/done-$LABEL"
 cd "$A"
 "$BIN" --user-data-dir="$P" --log-net-log="$A/netlog-$LABEL.json" --net-log-capture-mode=Default \
-  --remote-debugging-port=9224 > "$A/run-$LABEL.log" 2>&1 &
+  --remote-debugging-port=$PORT > "$A/run-$LABEL.log" 2>&1 &
 PID=$!
 echo $PID > "$A/pid-$LABEL"
 if [ $SCEN = 1 ]; then
   sleep 20
-  node "$SD/scenario.js" 9224 20 > "$A/scenario-$LABEL.log" 2>&1
+  node "$SD/scenario.js" $PORT 20 > "$A/scenario-$LABEL.log" 2>&1
+fi
+if [ -n "$WEBUI_SCAN" ]; then
+  sleep 15
+  node "$SD/webui_scan.js" $PORT > "$A/webui-$LABEL.jsonl" 2>&1
 fi
 sleep "$SECS"
 # Snapshot sockets of the browser process tree before stopping.
