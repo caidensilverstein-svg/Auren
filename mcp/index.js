@@ -109,6 +109,35 @@ historyDb.exec(`
 `);
 
 
+// Privacy housekeeping: query strings/fragments were stored by earlier
+// versions; strip them once, then rebuild the external-content FTS index.
+function stripUrl(raw) {
+  try { const u = new URL(raw); u.search = ''; u.hash = ''; return u.toString(); } catch { return raw; }
+}
+if (historyDb.pragma('user_version', { simple: true }) < 1) {
+  const rows = historyDb.prepare("SELECT id, url FROM visits WHERE url LIKE '%?%' OR url LIKE '%#%'").all();
+  const upd = historyDb.prepare('UPDATE visits SET url = ? WHERE id = ?');
+  historyDb.transaction(() => { for (const r of rows) upd.run(stripUrl(r.url), r.id); })();
+  historyDb.exec("INSERT INTO visits_fts(visits_fts) VALUES('rebuild')");
+  historyDb.pragma('user_version = 1');
+}
+
+const RETENTION_DAYS = Number(process.env.AUREN_HISTORY_RETENTION_DAYS) || 30;
+function pruneHistory() {
+  const cutoff = Date.now() - RETENTION_DAYS * 86_400_000;
+  const r = historyDb.prepare('DELETE FROM visits WHERE visited_at < ?').run(cutoff);
+  if (r.changes) historyDb.exec("INSERT INTO visits_fts(visits_fts) VALUES('rebuild')");
+}
+function clearHistory() {
+  historyDb.exec('DELETE FROM visits');
+  historyDb.exec("INSERT INTO visits_fts(visits_fts) VALUES('rebuild')");
+  historyDb.exec('VACUUM');
+}
+pruneHistory();
+setInterval(pruneHistory, 3_600_000).unref();
+function historyEnabled() {
+  return process.env.AUREN_HISTORY !== 'off' && loadPerms().history_enabled !== false;
+}
 
 // --- Session state ---
 let eidCounter = 0;
@@ -197,8 +226,11 @@ class SessionManager {
       if (frame.parentId) return;
       // Query strings and fragments routinely carry session tokens and search
       // terms; the path memory only needs where the user went.
-      let url = frame.url;
-      try { const u = new URL(frame.url); u.search = ''; u.hash = ''; url = u.toString(); } catch {}
+      const url = stripUrl(frame.url);
+      if (!historyEnabled()) return;
+      // after stripping, SPA route changes repeat the same URL; collapse them
+      const prev = historyDb.prepare('SELECT url, visited_at FROM visits WHERE tab_id = ? ORDER BY id DESC LIMIT 1').get(target.id);
+      if (prev && prev.url === url && Date.now() - prev.visited_at < 30_000) return;
       if (!url || url === 'about:blank' || url.startsWith('chrome://')) return;
       try {
         // The title is not known yet; it is filled in on loadEventFired below.
@@ -988,6 +1020,7 @@ function buildServer() {
       since_hours: z.number().optional(),
     }
   }, async ({ query, limit, since_hours }) => {
+    { const perm = checkPermission('read'); if (!perm.allowed) return denied(perm); }
     try {
       let rows;
       const since = since_hours ? Date.now() - since_hours * 3600_000 : 0;
@@ -1027,6 +1060,7 @@ function buildServer() {
       last_minutes: z.number().int().min(1).max(480).default(60),
     }
   }, async ({ last_minutes }) => {
+    { const perm = checkPermission('read'); if (!perm.allowed) return denied(perm); }
     const since = Date.now() - last_minutes * 60_000;
     const rows = historyDb.prepare(`
       SELECT url, title, visited_at, time_spent_ms FROM visits
@@ -1096,6 +1130,13 @@ admin.post('/permissions', (req, res) => {
   savePerms(p);
   res.json({ ok: true, trust_level: p.trust_level, rules: p.rules });
 });
+admin.post('/history', (req, res) => {
+  const p = loadPerms();
+  if (typeof req.body?.enabled === 'boolean') { p.history_enabled = req.body.enabled; savePerms(p); }
+  res.json({ ok: true, enabled: historyEnabled(), retention_days: RETENTION_DAYS,
+    rows: historyDb.prepare('SELECT COUNT(*) n FROM visits').get().n });
+});
+admin.delete('/history', (_, res) => { clearHistory(); res.json({ ok: true }); });
 admin.post('/revoke', (_, res) => { sessionGrants.clear(); res.json({ ok: true }); });
 app.use('/admin', admin);
 

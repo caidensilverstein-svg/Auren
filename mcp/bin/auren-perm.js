@@ -46,7 +46,12 @@ switch (cmd) {
   case 'deny': console.log(JSON.stringify(await api('POST', `/requests/${args[0]}/deny`))); break;
   case 'set': console.log(JSON.stringify(await api('POST', '/permissions', { action: args[0], level: args[1] }))); break;
   case 'trust': console.log(JSON.stringify(await api('POST', '/permissions', { trust_level: args[0] }))); break;
+  case 'history': {
+    if (args[0] === 'clear') console.log(JSON.stringify(await api('DELETE', '/history')));
+    else console.log(JSON.stringify(await api('POST', '/history', args[0] ? { enabled: args[0] === 'on' } : undefined)));
+    break;
+  }
   case 'revoke': console.log(JSON.stringify(await api('POST', '/revoke'))); break;
   default:
-    console.log('usage: auren-perm <list|requests|approve <id> [--permanent|--minutes N]|deny <id>|set <action> <allow|deny|ask>|trust <inspection|trusted>|revoke>');
+    console.log('usage: auren-perm <list|requests|approve <id> [--permanent|--minutes N]|deny <id>|set <action> <allow|deny|ask>|trust <inspection|trusted>|revoke|history [on|off|clear]>');
 }
