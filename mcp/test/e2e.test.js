@@ -15,6 +15,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const KEY = 'test-key-' + Math.random().toString(36).slice(2);
+const ADMIN = 'admin-key-' + Math.random().toString(36).slice(2);
 
 function freePort() {
   return new Promise(res => {
@@ -57,7 +58,7 @@ async function waitFor(fn, ms = 15000) {
 function startMcp(env = {}) {
   return spawn(process.execPath, [path.join(here, '..', 'index.js')], {
     env: { ...process.env, HOME: homeDir, AUREN_MCP_PORT: String(ports.mcp), AUREN_CDP_HOST: '127.0.0.1',
-           AUREN_CDP_PORT: String(ports.cdp), AUREN_MCP_KEY: KEY, ...env },
+           AUREN_CDP_PORT: String(ports.cdp), AUREN_MCP_KEY: KEY, AUREN_ADMIN_KEY: ADMIN, ...env },
     stdio: 'ignore',
   });
 }
@@ -68,6 +69,18 @@ async function connect(key = KEY) {
   return client;
 }
 const text = r => r.content.map(c => c.text ?? '').join('\n');
+// Out-of-band approval, as the user would do with `auren-perm approve`.
+async function admin(method, p, body, key = ADMIN) {
+  const r = await fetch(`http://127.0.0.1:${ports.mcp}/admin${p}`, {
+    method, headers: { 'x-admin-key': key, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  return { status: r.status, body: await r.json().catch(() => ({})) };
+}
+async function grant(c, action) {
+  const out = await call(c, 'browser_set_permission', { action, level: 'allow', reason: 'test' });
+  const id = out.match(/Request ([0-9a-f]+) filed/)?.[1] ?? out.match(/id ([0-9a-f]+)\)/)?.[1];
+  assert.ok(id, out);
+  assert.equal((await admin('POST', `/requests/${id}/approve`, { scope: 'session', minutes: 5 })).status, 200);
+}
 const call = async (c, name, args = {}) => text(await c.callTool({ name, arguments: args }));
 
 before(async () => {
@@ -141,7 +154,7 @@ test('click fires exactly once (button counter and checkbox toggle)', { skip }, 
   await call(c, 'browser_snapshot');
   await call(c, 'browser_click', { selector: '#b' });
   await call(c, 'browser_click', { selector: '#c' });
-  await call(c, 'browser_set_permission', { action: 'js_execute', level: 'allow', scope: 'session' });
+  await grant(c, 'js_execute');
   const n = await call(c, 'browser_execute_js', { code: 'JSON.stringify([window.n, window.toggles, document.getElementById("c").checked])' });
   assert.equal(JSON.parse(JSON.parse(n)).join(), '1,1,true');
   await c.close();
@@ -152,7 +165,7 @@ test('fill sets an input value', { skip }, async () => {
   await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/` });
   // fill is 'ask' by default under the inspection trust level
   assert.match(await call(c, 'browser_fill', { selector: '#t', value: 'x' }), /permission_denied/);
-  await call(c, 'browser_set_permission', { action: 'fill', level: 'allow', scope: 'session' });
+  await grant(c, 'fill');
   assert.match(await call(c, 'browser_fill', { selector: '#t', value: 'Ada' }), /val="Ada"/);
   await c.close();
 });
@@ -181,6 +194,39 @@ test('browsing history records the real page title and is searchable', { skip },
   await c.close();
 });
 
+test('agent cannot grant itself access: allow is only a request until the user approves', { skip }, async () => {
+  const c = await connect();
+  await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/ask` });
+  const out = await call(c, 'browser_set_permission', { action: 'form_submit', level: 'allow' });
+  assert.match(out, /NOT active/);
+  const perms = JSON.parse(await call(c, 'browser_get_permissions'));
+  assert.equal(perms.pending_requests.some(r => r.action === 'form_submit'), true);
+  assert.notEqual(perms.session_overrides.form_submit, 'allow');
+  await c.close();
+});
+
+test('admin API: disabled without key, rejects wrong key, deny discards request', { skip }, async () => {
+  assert.equal((await admin('GET', '/permissions', null, 'wrong')).status, 401);
+  const bare = await fetch(`http://127.0.0.1:${ports.mcp}/admin/permissions`);
+  assert.equal(bare.status, 404);
+  const c = await connect();
+  const out = await call(c, 'browser_set_permission', { action: 'navigation', level: 'allow' });
+  const id = out.match(/Request ([0-9a-f]+) filed/)?.[1] ?? out.match(/id ([0-9a-f]+)\)/)?.[1];
+  await admin('POST', `/requests/${id}/deny`);
+  const perms = (await admin('GET', '/permissions')).body;
+  assert.equal(perms.pending_requests.some(r => r.id === id), false);
+  await c.close();
+});
+
+test('the agent can tighten its own permissions; a deny rule blocks reads', { skip }, async () => {
+  const c = await connect();
+  await call(c, 'browser_set_permission', { action: 'read', level: 'deny' });
+  assert.match(await call(c, 'browser_snapshot'), /permission_denied/);
+  assert.equal((await admin('POST', '/revoke')).status, 200);
+  assert.match(await call(c, 'browser_snapshot'), /<state/);
+  await c.close();
+});
+
 test('reports a structured offline error when Auren is unreachable', { skip }, async () => {
   const c = await connect();
   chrome.kill('SIGKILL');
@@ -189,3 +235,4 @@ test('reports a structured offline error when Auren is unreachable', { skip }, a
   assert.match(out, /Auren is offline/);
   await c.close();
 });
+

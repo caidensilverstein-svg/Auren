@@ -64,14 +64,29 @@ function savePerms(p) {
   fs.writeFileSync(PERMS_PATH, JSON.stringify(p, null, 2));
 }
 
+// Session grants live in memory only and expire, so a restart or timeout
+// always returns to the persisted policy. Only the user (admin API / CLI)
+// can create an 'allow' grant: the agent-facing tool just files a request.
+const sessionGrants = new Map(); // action -> { level, expires }
+const pendingRequests = new Map(); // id -> { id, action, reason, requested_at }
+const DEFAULT_GRANT_MINUTES = 60;
+const MAX_PENDING = 50;
+const ACTIONS = ['fill', 'click', 'js_execute', 'form_submit', 'navigation', 'read'];
+
 function checkPermission(action) {
   const p = loadPerms();
-  const override = p.session_overrides?.[action];
-  const rule = override ?? p.rules?.[action] ?? 'ask';
+  const grant = sessionGrants.get(action);
+  if (grant && grant.expires <= Date.now()) sessionGrants.delete(action);
+  const live = grant && grant.expires > Date.now() ? grant.level : undefined;
+  const rule = live ?? p.rules?.[action] ?? 'ask';
   if (rule === 'allow') return { allowed: true };
   if (rule === 'deny') return { allowed: false, reason: `Action '${action}' is denied by permissions policy.` };
   if (p.trust_level === 'trusted') return { allowed: true };
-  return { allowed: false, reason: `Action '${action}' requires user approval. Use 'browser_set_permission' to allow it for this session.` };
+  return { allowed: false, reason: `Action '${action}' requires user approval. Call 'browser_set_permission' to file a request, then ask the user to approve it (auren-perm approve).` };
+}
+
+function denied(perm) {
+  return { content: [{ type: 'text', text: `<permission_denied>${perm.reason}</permission_denied>` }] };
 }
 
 // --- Browsing path memory (#12) ---
@@ -467,6 +482,8 @@ function buildServer() {
     }
   }, async ({ tab_id, mode = 'interactive', region, max_items }) => {
     try {
+      const perm = checkPermission('read');
+      if (!perm.allowed) return denied(perm);
       return await withCDP(tab_id, async (client, target) => {
         const xml = await takeSnapshot(client, target.id, { mode, region, maxItems: max_items, isDiff: false });
         return { content: [{ type: 'text', text: xml }] };
@@ -678,6 +695,8 @@ function buildServer() {
     inputSchema: { query: z.string(), tab_id: z.string().optional() }
   }, async ({ query, tab_id }) => {
     try {
+      const perm = checkPermission('read');
+      if (!perm.allowed) return denied(perm);
       return await withCDP(tab_id, async (client) => {
         const startN = eidCounter;
         const r = await client.Runtime.evaluate({
@@ -730,6 +749,8 @@ function buildServer() {
     }
   }, async ({ region, tab_id, max_chars = 4000 }) => {
     try {
+      const perm = checkPermission('read');
+      if (!perm.allowed) return denied(perm);
       return await withCDP(tab_id, async (client) => {
         const cap = Math.min(Number(max_chars) || 4000, 12000);
         const lmMap = {
@@ -766,6 +787,8 @@ function buildServer() {
     inputSchema: { tab_id: z.string().optional() }
   }, async ({ tab_id }) => {
     try {
+      const perm = checkPermission('read');
+      if (!perm.allowed) return denied(perm);
       return await withCDP(tab_id, async (client, target) => {
         const state = getTabState(target.id);
         const prevFPs = new Map(state.lastFPs);
@@ -803,6 +826,8 @@ function buildServer() {
     inputSchema: { tab_id: z.string().optional() }
   }, async ({ tab_id }) => {
     try {
+      const perm = checkPermission('read');
+      if (!perm.allowed) return denied(perm);
       return await withCDP(tab_id, async (client) => {
         const { data } = await client.Page.captureScreenshot({ format: 'png' });
         return { content: [{ type: 'image', data, mimeType: 'image/png' }] };
@@ -869,22 +894,26 @@ function buildServer() {
   });
 
   server.registerTool('browser_set_permission', {
-    description: 'Set or override an agent permission for this session or permanently. action: the action name (fill, click, js_execute, form_submit, navigation, read). level: allow | deny | ask. scope: session (default) | permanent.',
+    description: 'Request a permission change. Tightening (level deny/ask) applies immediately for this session. Loosening (level allow) is only a REQUEST: it is filed for the user, who must approve it out-of-band (auren-perm approve <id>); the agent cannot grant itself access. action: fill, click, js_execute, form_submit, navigation, read. reason: why you need it.',
     inputSchema: {
-      action: z.enum(['fill', 'click', 'js_execute', 'form_submit', 'navigation', 'read']),
+      action: z.enum(ACTIONS),
       level: z.enum(['allow', 'deny', 'ask']),
-      scope: z.enum(['session', 'permanent']).default('session'),
+      scope: z.enum(['session', 'permanent']).default('session').describe('Ignored for loosening: the user chooses the scope when approving.'),
+      reason: z.string().max(300).optional(),
     }
-  }, async ({ action, level, scope }) => {
-    const p = loadPerms();
-    if (scope === 'permanent') {
-      p.rules[action] = level;
-    } else {
-      p.session_overrides[action] = level;
+  }, async ({ action, level, reason }) => {
+    if (level !== 'allow') {
+      // Tightening is always safe to self-apply.
+      sessionGrants.set(action, { level, expires: Date.now() + DEFAULT_GRANT_MINUTES * 60_000 });
+      return { content: [{ type: 'text', text: `Permission for '${action}' tightened to '${level}' for this session.` }] };
     }
-    savePerms(p);
-    return { content: [{ type: 'text', text: 
-`Permission for '${action}' set to '${level}' (${scope}).` }] };
+    for (const r of pendingRequests.values()) {
+      if (r.action === action) return { content: [{ type: 'text', text: `A request for '${action}' is already pending (id ${r.id}). Ask the user to approve it.` }] };
+    }
+    if (pendingRequests.size >= MAX_PENDING) return { content: [{ type: 'text', text: 'Too many pending permission requests; ask the user to clear them.' }] };
+    const id = crypto.randomBytes(4).toString('hex');
+    pendingRequests.set(id, { id, action, reason: reason ?? '', requested_at: new Date().toISOString() });
+    return { content: [{ type: 'text', text: `Request ${id} filed: allow '${action}'. It is NOT active until the user approves it (auren-perm approve ${id}). Tell the user.` }] };
   });
 
   server.registerTool('browser_get_permissions', {
@@ -892,7 +921,8 @@ function buildServer() {
     inputSchema: {}
   }, async () => {
     const p = loadPerms();
-    return { content: [{ type: 'text', text: JSON.stringify(p, null, 2) }] };
+    const grants = Object.fromEntries([...sessionGrants].filter(([, g]) => g.expires > Date.now()).map(([k, g]) => [k, g.level]));
+    return { content: [{ type: 'text', text: JSON.stringify({ ...p, session_overrides: grants, pending_requests: [...pendingRequests.values()] }, null, 2) }] };
   });
 
   server.registerTool('browser_set_preference', {
@@ -1017,6 +1047,57 @@ function buildServer() {
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 app.get('/health', (_, res) => res.json({ status: 'ok', service: 'auren-mcp', version: '2.1.2' }));
+
+
+// --- Admin API (user-only; loopback + separate key; disabled unless AUREN_ADMIN_KEY is set) ---
+const ADMIN_KEY = process.env.AUREN_ADMIN_KEY;
+function adminAuth(req, res, next) {
+  const hdr = req.get('x-admin-key');
+  if (!ADMIN_KEY || typeof hdr !== 'string') return res.status(404).json({ error: 'not found' });
+  const a = crypto.createHash('sha256').update(hdr).digest();
+  const b = crypto.createHash('sha256').update(ADMIN_KEY).digest();
+  if (!crypto.timingSafeEqual(a, b)) return res.status(401).json({ error: 'unauthorized' });
+  next();
+}
+const admin = express.Router();
+admin.use(adminAuth);
+admin.get('/permissions', (_, res) => {
+  const grants = Object.fromEntries([...sessionGrants].filter(([, g]) => g.expires > Date.now())
+    .map(([k, g]) => [k, { level: g.level, expires: new Date(g.expires).toISOString() }]));
+  res.json({ ...loadPerms(), session_overrides: grants, pending_requests: [...pendingRequests.values()] });
+});
+admin.post('/requests/:id/approve', (req, res) => {
+  const r = pendingRequests.get(req.params.id);
+  if (!r) return res.status(404).json({ error: 'no such request' });
+  const scope = req.body?.scope === 'permanent' ? 'permanent' : 'session';
+  const minutes = Math.min(Math.max(Number(req.body?.minutes) || DEFAULT_GRANT_MINUTES, 1), 24 * 60);
+  if (scope === 'permanent') {
+    const p = loadPerms(); p.rules[r.action] = 'allow'; savePerms(p);
+  } else {
+    sessionGrants.set(r.action, { level: 'allow', expires: Date.now() + minutes * 60_000 });
+  }
+  pendingRequests.delete(r.id);
+  res.json({ ok: true, action: r.action, scope, minutes: scope === 'session' ? minutes : undefined });
+});
+admin.post('/requests/:id/deny', (req, res) => {
+  res.json({ ok: pendingRequests.delete(req.params.id) });
+});
+admin.post('/permissions', (req, res) => {
+  const { action, level, trust_level } = req.body ?? {};
+  const p = loadPerms();
+  if (trust_level !== undefined) {
+    if (!['inspection', 'trusted'].includes(trust_level)) return res.status(400).json({ error: 'bad trust_level' });
+    p.trust_level = trust_level;
+  }
+  if (action !== undefined) {
+    if (!ACTIONS.includes(action) || !['allow', 'deny', 'ask'].includes(level)) return res.status(400).json({ error: 'bad action/level' });
+    p.rules[action] = level;
+  }
+  savePerms(p);
+  res.json({ ok: true, trust_level: p.trust_level, rules: p.rules });
+});
+admin.post('/revoke', (_, res) => { sessionGrants.clear(); res.json({ ok: true }); });
+app.use('/admin', admin);
 
 async function handleMcp(req, res) {
   const bearer = (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
