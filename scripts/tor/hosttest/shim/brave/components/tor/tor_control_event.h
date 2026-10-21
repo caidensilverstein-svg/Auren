@@ -1,0 +1,2 @@
+#pragma once
+enum class TorControlEvent { NETWORK_LIVENESS, STATUS_CLIENT, STATUS_GENERAL, CIRC, STREAM, GUARD, INVALID };

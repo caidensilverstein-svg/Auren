@@ -83,6 +83,13 @@ now supports them.
 * The build does not yet install the bundle into `Auren.app` automatically; run `install_into_app.sh`
   (or set `AUREN_TOR_BUNDLE`).
 * Tor traffic itself was not captured through the telemetry audit yet; only the page's data was verified.
+* `brave_unit_tests` has not been built with the tracker's gtest yet. As a stand-in, `scripts/tor/hosttest/run.sh`
+  compiles the real tracker sources on a plain Linux toolchain (small stand-ins for the //base pieces, see
+  `shim/`) and runs the parser tests plus 8 state-machine tests against a scripted fake control port: spare
+  circuits collapsed, internal/one-hop hidden, IP-jump history, last-used circuit retained, retry of unresolved
+  relays, Stop, bounded history, late replies after destruction. 14/14 pass; breaking the spare rule makes
+  a test fail. This found one real defect (missing copy-assignment on `ParsedCircuit`, now fixed). It does not
+  replace compiling in the browser tree.
 * Linux / Windows bundles are not produced.
 * `NEWNYM` is rate-limited by tor (about every 10 s) and affects all sites, unlike Brave's per-site
   "New Tor circuit for this site".

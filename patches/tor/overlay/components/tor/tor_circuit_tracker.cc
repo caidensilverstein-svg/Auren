@@ -90,6 +90,8 @@ TorCircuitSnapshot::~TorCircuitSnapshot() = default;
 
 TorCircuitTracker::ParsedCircuit::ParsedCircuit() = default;
 TorCircuitTracker::ParsedCircuit::ParsedCircuit(const ParsedCircuit&) = default;
+TorCircuitTracker::ParsedCircuit& TorCircuitTracker::ParsedCircuit::operator=(
+    const ParsedCircuit&) = default;
 TorCircuitTracker::ParsedCircuit::~ParsedCircuit() = default;
 
 TorCircuitTracker::TorCircuitTracker() = default;

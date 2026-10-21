@@ -122,6 +122,7 @@ class TorCircuitTracker {
   struct ParsedCircuit {
     ParsedCircuit();
     ParsedCircuit(const ParsedCircuit&);
+    ParsedCircuit& operator=(const ParsedCircuit&);
     ~ParsedCircuit();
     std::string id;
     std::string status;
