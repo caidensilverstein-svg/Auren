@@ -14,3 +14,11 @@ on. Until then no privacy result beyond the launch test is claimed.
 
 **Resolved:** the first rebuild failed on `host_piece` (fixed in `patches/privacy/0001-network-firewall.patch`);
 build needs `PYTHONPATH="$(pwd)/brave/script"`. See `patches/privacy/README.md`.
+
+**2026-10-21 (Mac offline, no compiles):** Oracle MCP deployed to `main` (backup `~/backups/auren-mcp-20261021-115335`
+on Oracle; 25/25 e2e pass locally, health ok; live-browser smoke test pending the Mac). Added, all source-only:
+Tor bridges through the bundled lyrebird (`patches/tor/apply_bridges.py`; transport commands verified end to end on
+Linux for obfs4 and snowflake), Linux/Windows Tor bundles, a host-side test harness for the circuit tracker (14/14),
+`patches/privacy/0002-js-heap-size-limit.patch`, and optional `fingerprint/optional/0009-...`. None of the C++ has been
+compiled. The Mac-side queue (apply, build, hands-off netlog audit, fingerprint post-run, Tor capture) is Gitea
+issue #18. `open-risks.md` item 3 was corrected: the battery API returns constants in Brave's source.
