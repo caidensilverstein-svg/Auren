@@ -93,7 +93,7 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
         <span style="display:flex;align-items:center;gap:6px">
           <span id="icon-tor" style="display:inline-flex;align-items:center;color:var(--accent)"><i data-lucide="route" style="width:14px;height:14px"></i></span>
           <span style="font-size:var(--text-xs);color:var(--text-secondary);letter-spacing:0.08em;text-transform:uppercase">Tor</span>
-          <span id="val-tor" style="font-size:var(--text-sm);color:var(--accent);font-weight:500">DE</span>
+          <span id="val-tor" style="font-size:var(--text-sm);color:var(--accent);font-weight:500">&hellip;</span>
         </span>
         <span id="track-tor" style="width:20px;height:11px;border-radius:9999px;position:relative;background:var(--accent);display:block;transition:background var(--duration-fast) var(--ease-out)">
           <span id="thumb-tor" style="position:absolute;top:1.5px;left:11px;width:8px;height:8px;border-radius:9999px;background:var(--accent-hover);transition:left var(--duration-fast) var(--ease-out)"></span>
@@ -105,7 +105,7 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
         <span style="display:flex;align-items:center;gap:6px">
           <span id="icon-dns" style="display:inline-flex;align-items:center;color:var(--accent)"><i data-lucide="server" style="width:14px;height:14px"></i></span>
           <span style="font-size:var(--text-xs);color:var(--text-secondary);letter-spacing:0.08em;text-transform:uppercase">DNS</span>
-          <span id="val-dns" style="font-size:var(--text-sm);color:var(--accent);font-weight:500">On</span>
+          <span id="val-dns" style="font-size:var(--text-sm);color:var(--accent);font-weight:500">&hellip;</span>
         </span>
         <span id="track-dns" style="width:20px;height:11px;border-radius:9999px;position:relative;background:var(--accent);display:block;transition:background var(--duration-fast) var(--ease-out)">
           <span id="thumb-dns" style="position:absolute;top:1.5px;left:11px;width:8px;height:8px;border-radius:9999px;background:var(--accent-hover);transition:left var(--duration-fast) var(--ease-out)"></span>
@@ -117,7 +117,7 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
         <span style="display:flex;align-items:center;gap:6px">
           <span id="icon-js" style="display:inline-flex;align-items:center;color:var(--accent)"><i data-lucide="braces" style="width:14px;height:14px"></i></span>
           <span style="font-size:var(--text-xs);color:var(--text-secondary);letter-spacing:0.08em;text-transform:uppercase">JS</span>
-          <span id="val-js" style="font-size:var(--text-sm);color:var(--accent);font-weight:500">On</span>
+          <span id="val-js" style="font-size:var(--text-sm);color:var(--accent);font-weight:500">&hellip;</span>
         </span>
         <span id="track-js" style="width:20px;height:11px;border-radius:9999px;position:relative;background:var(--accent);display:block;transition:background var(--duration-fast) var(--ease-out)">
           <span id="thumb-js" style="position:absolute;top:1.5px;left:11px;width:8px;height:8px;border-radius:9999px;background:var(--accent-hover);transition:left var(--duration-fast) var(--ease-out)"></span>
@@ -141,13 +141,13 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
       <div style="display:flex;align-items:center;gap:6px">
         <span id="icon-https" style="display:inline-flex;align-items:center;color:var(--accent)"><i data-lucide="lock" style="width:14px;height:14px"></i></span>
         <span style="font-size:var(--text-xs);color:var(--text-secondary);letter-spacing:0.08em;text-transform:uppercase">HTTPS</span>
-        <span id="val-https" style="font-size:var(--text-sm);color:var(--accent);font-weight:500">Enforced</span>
+        <span id="val-https" style="font-size:var(--text-sm);color:var(--accent);font-weight:500">&hellip;</span>
       </div>
 
       <div style="display:flex;align-items:center;gap:6px">
         <span id="icon-cookies" style="display:inline-flex;align-items:center;color:var(--accent)"><i data-lucide="cookie" style="width:14px;height:14px"></i></span>
         <span style="font-size:var(--text-xs);color:var(--text-secondary);letter-spacing:0.08em;text-transform:uppercase">Cookies</span>
-        <span id="val-cookies" style="font-size:var(--text-sm);color:var(--accent);font-weight:500">Isolated</span>
+        <span id="val-cookies" style="font-size:var(--text-sm);color:var(--accent);font-weight:500">&hellip;</span>
       </div>
     </div>
   </div>
@@ -253,8 +253,10 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
     }
 
     document.getElementById('btn-tor').addEventListener('click', function() {
-      state.tor.active = !state.tor.active;
-      render();
+      // Opens a Tor window, or the circuit page when Tor is already connected.
+      if (window.chrome && chrome.send) {
+        chrome.send('openTor');
+      }
     });
 
     document.getElementById('btn-dns').addEventListener('click', function() {

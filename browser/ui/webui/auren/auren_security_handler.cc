@@ -17,7 +17,12 @@
 #include "brave/components/brave_shields/core/browser/brave_shields_utils.h"
 #include "brave/components/brave_shields/core/common/brave_shields_settings_values.h"
 #include "brave/components/tor/buildflags/buildflags.h"
+#include "base/strings/string_util.h"
+#include "brave/browser/ui/browser_commands.h"
 #include "chrome/browser/content_settings/cookie_settings_factory.h"
+#include "content/public/browser/web_contents.h"
+#include "ui/base/page_transition_types.h"
+#include "ui/base/window_open_disposition.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/net/secure_dns_config.h"
 #include "chrome/browser/net/stub_resolver_config_reader.h"
@@ -66,6 +71,9 @@ void AurenSecurityHandler::RegisterMessages() {
       "setJsEnabled",
       base::BindRepeating(&AurenSecurityHandler::HandleSetJsEnabled,
                           base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "openTor", base::BindRepeating(&AurenSecurityHandler::HandleOpenTor,
+                                     base::Unretained(this)));
   web_ui()->RegisterMessageCallback(
       "setHttpsOnly",
       base::BindRepeating(&AurenSecurityHandler::HandleSetHttpsOnly,
@@ -151,6 +159,20 @@ auren::mojom::SecurityStatePtr AurenSecurityHandler::BuildSecurityState()
   // (that lives in Arti's circuit state, not TorProfileService); leave
   // unset rather than guessing.
   state->tor_exit_country = "";
+#if BUILDFLAG(ENABLE_TOR)
+  {
+    // Exit country of the circuit currently carrying traffic, from the
+    // tracker (tor's own GeoIP file; nothing leaves the machine).
+    const auto& circuits = TorLauncherFactory::GetInstance()
+                               ->GetCircuitTracker()
+                               ->snapshot()
+                               .circuits;
+    if (!circuits.empty() && !circuits.front().hops.empty()) {
+      state->tor_exit_country =
+          base::ToUpperASCII(circuits.front().hops.back().country);
+    }
+  }
+#endif
 
   // DNS is considered "active" (DoH engaged) when the resolver mode is
   // anything other than the plain system resolver.
@@ -176,6 +198,21 @@ void AurenSecurityHandler::SetHttpsOnlyMode(bool enabled) {
   auto* map = HostContentSettingsMapFactory::GetForProfile(profile_);
   brave_shields::SetHttpsUpgradeControlType(
       map, enabled ? brave_shields::BLOCK : brave_shields::ALLOW, GURL());
+}
+
+void AurenSecurityHandler::HandleOpenTor(const base::ListValue& args) {
+#if BUILDFLAG(ENABLE_TOR)
+  if (TorLauncherFactory::GetInstance()->IsTorConnected()) {
+    web_ui()->GetWebContents()->OpenURL(
+        content::OpenURLParams(GURL("chrome://tor-circuit/"),
+                               content::Referrer(),
+                               WindowOpenDisposition::NEW_FOREGROUND_TAB,
+                               ui::PAGE_TRANSITION_LINK, false),
+        /*navigation_handle_callback=*/{});
+  } else {
+    brave::NewOffTheRecordWindowTor(profile_->GetOriginalProfile());
+  }
+#endif
 }
 
 void AurenSecurityHandler::HandleGetSecurityState(

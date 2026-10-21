@@ -47,6 +47,9 @@ class AurenSecurityHandler
   void HandleGetSecurityState(const base::ListValue& args);
   void HandleSetJsEnabled(const base::ListValue& args);
   void HandleSetHttpsOnly(const base::ListValue& args);
+  // Tor: opens a Tor window when Tor is off, or the circuit page when it
+  // is connected.
+  void HandleOpenTor(const base::ListValue& args);
 
   // Delivers the last *measured* fingerprint audit (written by
   // scripts/fingerprint-audit, see docs/privacy/fingerprinting/harness.md) to
