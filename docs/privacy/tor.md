@@ -90,6 +90,14 @@ now supports them.
   relays, Stop, bounded history, late replies after destruction. 14/14 pass; breaking the spare rule makes
   a test fail. This found one real defect (missing copy-assignment on `ParsedCircuit`, now fixed). It does not
   replace compiling in the browser tree.
-* Linux / Windows bundles are not produced.
+* Linux and Windows: `scripts/tor/fetch_bundle.sh <ver> <platform-arch> <dir>` downloads an expert bundle and
+  verifies it (signed checksum list by the Tor Browser signing key EF6E...8290, then the tarball sha256);
+  `make_bundle.sh` now assembles macOS, Linux and Windows bundles (platform detected from the bundle).
+  Verified 2026-10-21 for 15.0.25 / tor 0.4.9.14 on Linux x86_64: tor starts from the assembled bundle with
+  no `LD_LIBRARY_PATH` (libevent/openssl resolve from the bundle via `RPATH=$ORIGIN`, set with patchelf because
+  the shipped `tor` has no RPATH), bootstraps to 100% and `check.torproject.org` reports `IsTor: true`; the
+  control port returns the `250+circuit-status` reply. **Not verified:** the browser side on Linux/Windows
+  (the launcher finding `tor-<ver>-<arch>-auren-1[.exe]`, the in-app install location), a Windows run, and
+  Authenticode/notarization signing. The macOS x86_64 and Windows bundles were assembled but not run.
 * `NEWNYM` is rate-limited by tor (about every 10 s) and affects all sites, unlike Brave's per-site
   "New Tor circuit for this site".
