@@ -101,9 +101,11 @@ that is a request to the Tor Project, only when the user chose built-in bridges.
 
 Verified 2026-10-21 (Linux x86_64 bundle, tor 0.4.9.14): tor started with the network disabled, then received
 exactly the `SETCONF` strings the patch produces (bundled form, relative `exec pluggable_transports/lyrebird`,
-`Bridge="..."` lines + `UseBridges=1`, as `SetupBridges` formats them). Result: `Bootstrapped 100%`, 
+`Bridge="..."` lines + `UseBridges=1`, as `SetupBridges` formats them). Result: `Bootstrapped 100%`,
 `check.torproject.org` reported `IsTor: true`, and the guards on the built circuits were bridge fingerprints from
-the default obfs4 list. Snowflake: see the result line below. **Not verified:** the C++ (never compiled; the anchors
+the default obfs4 list. Snowflake (the built-in snowflake line with its `url=`/`fronts=`/`ice=` arguments, `snowflake exec pluggable_transports/lyrebird`
+with no flags): `Bootstrapped 100%` in 93 s, `IsTor: true`, and the only guard on the circuits was the snowflake bridge
+(`8838024498816A039FCBBAB14E6F40A0843051FA`). **Not verified:** the C++ (never compiled; the anchors
 of every edit were checked to match brave-core v1.94.97, the Mac tree's base, and the script is idempotent), the
 settings dialog end to end, and any platform other than Linux.
 
