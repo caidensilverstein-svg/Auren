@@ -48,7 +48,7 @@ std::optional<base::DictValue> ReadAuditSummary(base::FilePath path) {
   if (!base::ReadFileToString(path, &json) || json.size() > 256 * 1024) {
     return std::nullopt;
   }
-  return base::JSONReader::ReadDict(json);
+  return base::JSONReader::ReadDict(json, base::JSON_PARSE_RFC);
 }
 
 }  // namespace
@@ -80,9 +80,11 @@ auren::mojom::SecurityStatePtr AurenSecurityHandler::BuildSecurityState()
   const bool js_enabled =
       brave_shields::GetNoScriptControlType(map, empty) ==
       brave_shields::ALLOW;
+  // Standard (ASK) upgrades to HTTPS and falls back; strict (BLOCK) refuses
+  // plain HTTP. Only ALLOW leaves the connection un-upgraded.
   const bool https_enforced =
-      brave_shields::GetHttpsUpgradeControlType(map, empty) ==
-      brave_shields::BLOCK;
+      brave_shields::GetHttpsUpgradeControlType(map, empty) !=
+      brave_shields::ALLOW;
 
   // Fingerprinting: a checklist of protections that can be verified from live
   // browser state. This is NOT a measure of how unique the browser is.
@@ -183,6 +185,10 @@ void AurenSecurityHandler::HandleGetSecurityState(
   base::DictValue dict;
   dict.Set("js_enabled", s->js_enabled);
   dict.Set("https_enforced", s->https_enforced);
+  dict.Set("https_strict",
+           brave_shields::GetHttpsUpgradeControlType(
+               HostContentSettingsMapFactory::GetForProfile(profile_),
+               GURL()) == brave_shields::BLOCK);
   dict.Set("cookies_isolated", s->cookies_isolated);
   dict.Set("fp_active", s->fingerprint_protections_active);
   dict.Set("fp_total", s->fingerprint_protections_total);
