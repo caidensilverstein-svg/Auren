@@ -42,8 +42,8 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
     --text-primary: rgba(255,255,255,0.92);
     --text-secondary: rgba(255,255,255,0.55);
     --text-muted: rgba(255,255,255,0.28);
-    --accent: #6c63ff;
-    --accent-hover: #7c74ff;
+    --accent: #c9a84c;
+    --accent-hover: #d9bd6a;
 
     /* Spacing */
     --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
@@ -153,11 +153,12 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
   </div>
 
   <script>
-    var ACCENT = '#6c63ff';
+    var ACCENT = '#c9a84c';
     var DANGER = '#c0392b';
-    var TRACK_ON = '#6c63ff';
+    var MUTED = '#8a8a99';  // opt-in features that are simply off (not a fault)
+    var TRACK_ON = '#c9a84c';
     var TRACK_OFF = 'rgba(255,255,255,0.28)';
-    var THUMB_ON = '#7c74ff';
+    var THUMB_ON = '#d9bd6a';
     var THUMB_OFF = '#1a1a24';
 
     var state = {
@@ -166,11 +167,12 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
       js:              { active: true },
       fp:              { active: 0, total: 0, missing: '', audit: null },
       httpsEnforced:   true,
+      httpsStrict:     false,
       cookiesIsolated: true
     };
 
-    function applyToggle(prefix, active, label) {
-      var c = active ? ACCENT : DANGER;
+    function applyToggle(prefix, active, label, offColor) {
+      var c = active ? ACCENT : (offColor || DANGER);
       document.getElementById('icon-' + prefix).style.color = c;
       var valEl = document.getElementById('val-' + prefix);
       valEl.textContent = label;
@@ -184,7 +186,7 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
 
     function render() {
       applyToggle('tor', state.tor.active,
-          state.tor.active ? (state.tor.exitCountry || 'On') : 'Off');
+          state.tor.active ? (state.tor.exitCountry || 'On') : 'Off', MUTED);
       applyToggle('dns', state.dns.active,
           state.dns.active ? 'On' : 'Off');
       applyToggle('js', state.js.active,
@@ -218,7 +220,8 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
       var httpsC = state.httpsEnforced ? ACCENT : DANGER;
       document.getElementById('icon-https').style.color = httpsC;
       var httpsEl = document.getElementById('val-https');
-      httpsEl.textContent = state.httpsEnforced ? 'Enforced' : 'Not enforced';
+      httpsEl.textContent = state.httpsStrict ? 'Strict' :
+          (state.httpsEnforced ? 'Upgrade' : 'Off');
       httpsEl.style.color = httpsC;
 
       var cookieC = state.cookiesIsolated ? ACCENT : DANGER;
@@ -238,6 +241,7 @@ constexpr char kAurenNewTabHtml[] = R"AUREN(<!DOCTYPE html>
       state.fp.total         = s.fp_total || 0;
       state.fp.missing       = s.fp_missing || '';
       state.httpsEnforced    = !!s.https_enforced;
+      state.httpsStrict      = !!s.https_strict;
       state.cookiesIsolated  = !!s.cookies_isolated;
       render();
     }

@@ -53,7 +53,7 @@ Six live signals, all backed by real browser state (no mocks): JS, HTTPS, Cookie
 
 ## Design
 
-Dark theme built on a token system (typography, color, spacing, radius, elevation, motion) — see the `:root` block in `auren_new_tab_ui.cc`. Inter for UI text, DM Mono for the security bar, accent `#6c63ff`.
+Dark theme built on a token system (typography, color, spacing, radius, elevation, motion) — see the `:root` block in `auren_new_tab_ui.cc`. Inter for UI text, DM Mono for the security bar, accent gold `#c9a84c` (matches the browser theme).
 
 ## Status
 
