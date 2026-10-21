@@ -353,7 +353,7 @@ void BraveTorClientUpdater::OnBundledTorFound(base::FilePath bundle_dir) {
   // Finds the executable inside the bundle, then reports the sentinel as the
   // install dir so the launcher runs it in place.
   OnComponentReady(kTorClientComponentId, bundle_dir, std::string());
-  install_dir_ = base::FilePath(kBundledInstallDirName);
+  install_dir_ = base::FilePath::FromASCII(kBundledInstallDirName);
 }
 """,
      marker="void BraveTorClientUpdater::OnBundledTorFound(")

@@ -25,3 +25,7 @@ Known behavioural notes: with Shields off for a site (incl. the claude.ai panel)
 Interaction with 0006: Brave's `GetUserAgentMetadata` DCHECKs 3 brands - unchanged (still Chromium, brand, GREASE).
 
 Not patched (see open-risks): wallet provider globals, battery/USB/HID/Serial/Bluetooth/MIDI/sensors, performance.memory, canvas read-back limiting, letterboxing, WebGPU limits bucketing, timezone strict mode.
+
+Added 2026-10-21 (apply-checked against brave-core v1.94.97, which is the Mac tree's base; not compiled):
+`patches/privacy/0002-js-heap-size-limit.patch` (Chromium tree: `performance.memory.jsHeapSizeLimit` constant) and the optional
+`patches/privacy/fingerprint/optional/0009-disable-usb-hid-serial-bluetooth.patch` (see its README for the trade-off).

@@ -76,9 +76,39 @@ All of it is applied to a brave-core tree by `patches/tor/apply.py`.
 ignored and their body lines would have been treated as malformed, closing the control connection. The client
 now supports them.
 
+## Bridges (obfs4, meek, webtunnel, snowflake)
+
+Brave already ships the bridge feature: Settings > Tor has a bridges dialog (built-in obfs4 or snowflake, a
+requested set from the Tor Project, or your own bridge lines), applied through `TorControl::SetupBridges`. What
+was missing for Auren is where the transport programs come from: Brave downloads them as a second component from
+**Brave's component server**, so turning bridges on would have sent a request to Brave. `patches/tor/apply_bridges.py`
+(run after `apply.py`) makes the transport updater use the `lyrebird` that is already in the bundle
+(`pluggable_transports/lyrebird`), exactly like Tor Browser. With a bundle present no component is fetched; without
+one it falls back to Brave's component as before.
+
+* `constants.{h,cc}`: `ResolvePluggableTransportPath()` (a path under the bundled sentinel is relative to tor's
+  working directory, i.e. the bundle; anything else keeps the old `../../<component path>`).
+* `brave_tor_pluggable_transport_updater.{h,cc}`: `Register()` looks for the bundled `lyrebird` first and reports
+  ready with that path for both snowflake and obfs4.
+* `tor_control.cc`: for the bundled case `SETCONF ClientTransportPlugin` uses lyrebird for
+  `meek_lite,obfs2,obfs3,obfs4,scramblesuit,webtunnel` and for `snowflake`, **without** the `-url/-front/-ice`
+  flags that the standalone snowflake-client needs (lyrebird takes those from the bridge line, which the built-in
+  snowflake lines carry as `url=`, `fronts=`, `ice=`).
+* `tor_profile_service_impl.cc`: its debug-only existence check uses the same path rule.
+
+Network note: picking *built-in* bridges makes Brave's code ask `bridges.torproject.org` (moat) for a fresh list;
+that is a request to the Tor Project, only when the user chose built-in bridges.
+
+Verified 2026-10-21 (Linux x86_64 bundle, tor 0.4.9.14): tor started with the network disabled, then received
+exactly the `SETCONF` strings the patch produces (bundled form, relative `exec pluggable_transports/lyrebird`,
+`Bridge="..."` lines + `UseBridges=1`, as `SetupBridges` formats them). Result: `Bootstrapped 100%`, 
+`check.torproject.org` reported `IsTor: true`, and the guards on the built circuits were bridge fingerprints from
+the default obfs4 list. Snowflake: see the result line below. **Not verified:** the C++ (never compiled; the anchors
+of every edit were checked to match brave-core v1.94.97, the Mac tree's base, and the script is idempotent), the
+settings dialog end to end, and any platform other than Linux.
+
 ## Not done yet / known limits
 
-* Bridges (obfs4 / snowflake) are not wired up; `lyrebird` is bundled but unused.
 * The Tor-window new-tab page does not embed the circuit view; open `chrome://tor-circuit`.
 * The build does not yet install the bundle into `Auren.app` automatically; run `install_into_app.sh`
   (or set `AUREN_TOR_BUNDLE`).

@@ -1,0 +1,16 @@
+diff --git a/third_party/blink/renderer/core/timing/memory_info.cc b/third_party/blink/renderer/core/timing/memory_info.cc
+index b17ada5..ddc1d51 100644
+--- a/third_party/blink/renderer/core/timing/memory_info.cc
++++ b/third_party/blink/renderer/core/timing/memory_info.cc
+@@ -51,7 +51,10 @@ static void GetHeapSize(HeapInfo& info) {
+       heap_statistics.used_heap_size() + heap_statistics.external_memory();
+   info.total_js_heap_size =
+       heap_statistics.total_physical_size() + heap_statistics.external_memory();
+-  info.js_heap_size_limit = heap_statistics.heap_size_limit();
++  // Auren: V8 sizes its heap limit from physical memory (about a quarter, at
++  // most 4 GB), so the raw value tells an 8 GB machine from a 16 GB one. Report
++  // the common 64-bit desktop value; it is then bucketized like the rest.
++  info.js_heap_size_limit = 4294705152u;
+ }
+ 
+ class HeapSizeCache {

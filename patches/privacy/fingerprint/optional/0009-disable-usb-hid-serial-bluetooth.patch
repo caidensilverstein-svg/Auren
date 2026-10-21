@@ -1,0 +1,25 @@
+diff --git a/browser/brave_content_browser_client.cc b/browser/brave_content_browser_client.cc
+index 632aeae..f47c08d 100644
+--- a/browser/brave_content_browser_client.cc
++++ b/browser/brave_content_browser_client.cc
+@@ -1117,6 +1117,20 @@ void BraveContentBrowserClient::AppendExtraCommandLineSwitches(
+       }
+     }
+ 
++    // Auren (optional, see patches/privacy/fingerprint/optional/README.md):
++    // no WebUSB / WebHID / Web Serial / Web Bluetooth in any renderer. The
++    // worker variants of these features depend on them and go with them.
++    {
++      std::string disabled_blink_features =
++          command_line->GetSwitchValueASCII(switches::kDisableBlinkFeatures);
++      if (!disabled_blink_features.empty()) {
++        disabled_blink_features += ",";
++      }
++      disabled_blink_features += "WebUSB,WebHID,Serial,WebBluetooth";
++      command_line->AppendSwitchASCII(switches::kDisableBlinkFeatures,
++                                      disabled_blink_features);
++    }
++
+     // Switches to pass to render processes.
+     static const char* const kSwitchNames[] = {
+         translate::switches::kBraveTranslateUseGoogleEndpoint,
