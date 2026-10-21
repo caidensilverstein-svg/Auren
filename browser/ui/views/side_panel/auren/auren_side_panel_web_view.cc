@@ -21,10 +21,14 @@
 
 namespace {
 constexpr char kClaudeAIURL[] = "https://claude.ai";
-constexpr char kChromeUserAgent[] =
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/138.0.0.0 Safari/537.36";
+// [Auren fingerprinting] The panel deliberately does NOT override the user
+// agent any more. It used to force "Chrome/138" on a 151 engine, which (a)
+// disagreed with the engine's real Chrome/151 UA-CH metadata and Sec-CH-UA
+// headers, and (b) made the panel a distinctive, inconsistent client. The
+// engine's own UA string is already the frozen Chrome-on-macOS string, and UA,
+// UA-CH (JS + headers) and navigator.* all derive from the single policy in
+// docs/privacy/fingerprinting/policy.md. Verified by the harness check
+// consistency.ua_header_matches_js / ua_version_matches_brands.
 }  // namespace
 
 BEGIN_METADATA(AurenSidePanelWebView)
@@ -90,13 +94,9 @@ void AurenSidePanelWebView::LoadClaudeAI() {
   owned_web_contents_ = content::WebContents::Create(params);
   SetWebContents(owned_web_contents_.get());
 
-  blink::UserAgentOverride ua_override;
-  ua_override.ua_string_override = kChromeUserAgent;
-  owned_web_contents_->SetUserAgentOverride(ua_override, false);
-
   content::NavigationController::LoadURLParams load_params{GURL(kClaudeAIURL)};
   load_params.transition_type = ui::PAGE_TRANSITION_AUTO_TOPLEVEL;
   load_params.override_user_agent =
-      content::NavigationController::UA_OVERRIDE_TRUE;
+      content::NavigationController::UA_OVERRIDE_FALSE;
   owned_web_contents_->GetController().LoadURLWithParams(load_params);
 }

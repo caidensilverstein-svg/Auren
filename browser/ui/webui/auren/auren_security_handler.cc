@@ -7,25 +7,56 @@
 
 #include <utility>
 
+#include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/functional/bind.h"
+#include "base/json/json_reader.h"
+#include "base/task/task_traits.h"
+#include "base/task/thread_pool.h"
 #include "base/values.h"
 #include "brave/components/brave_shields/core/browser/brave_shields_utils.h"
 #include "brave/components/brave_shields/core/common/brave_shields_settings_values.h"
 #include "brave/components/tor/buildflags/buildflags.h"
+#include "base/strings/string_util.h"
+#include "brave/browser/ui/browser_commands.h"
 #include "chrome/browser/content_settings/cookie_settings_factory.h"
+#include "content/public/browser/web_contents.h"
+#include "ui/base/page_transition_types.h"
+#include "ui/base/window_open_disposition.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/net/secure_dns_config.h"
 #include "chrome/browser/net/stub_resolver_config_reader.h"
 #include "chrome/browser/net/system_network_context_manager.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/common/pref_names.h"
+#include "base/feature_list.h"
 #include "components/content_settings/core/browser/cookie_settings.h"
+#include "components/prefs/pref_service.h"
 #include "content/public/browser/web_ui.h"
 #include "net/dns/public/secure_dns_mode.h"
+#include "third_party/blink/public/common/features.h"
 #include "url/gurl.h"
 
 #if BUILDFLAG(ENABLE_TOR)
 #include "brave/components/tor/tor_launcher_factory.h"
 #endif
+
+namespace {
+
+// Written by `node scripts/fingerprint-audit/run.js --write-profile-report <profile>`
+// (or by the agent via the injected self-test). Absent file == "not measured".
+constexpr base::FilePath::CharType kAuditFileName[] =
+    FILE_PATH_LITERAL("auren-fingerprint-audit.json");
+
+std::optional<base::DictValue> ReadAuditSummary(base::FilePath path) {
+  std::string json;
+  if (!base::ReadFileToString(path, &json) || json.size() > 256 * 1024) {
+    return std::nullopt;
+  }
+  return base::JSONReader::ReadDict(json, base::JSON_PARSE_RFC);
+}
+
+}  // namespace
 
 AurenSecurityHandler::AurenSecurityHandler() = default;
 AurenSecurityHandler::~AurenSecurityHandler() = default;
@@ -41,6 +72,9 @@ void AurenSecurityHandler::RegisterMessages() {
       base::BindRepeating(&AurenSecurityHandler::HandleSetJsEnabled,
                           base::Unretained(this)));
   web_ui()->RegisterMessageCallback(
+      "openTor", base::BindRepeating(&AurenSecurityHandler::HandleOpenTor,
+                                     base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
       "setHttpsOnly",
       base::BindRepeating(&AurenSecurityHandler::HandleSetHttpsOnly,
                           base::Unretained(this)));
@@ -54,16 +88,46 @@ auren::mojom::SecurityStatePtr AurenSecurityHandler::BuildSecurityState()
   const bool js_enabled =
       brave_shields::GetNoScriptControlType(map, empty) ==
       brave_shields::ALLOW;
+  // Standard (ASK) upgrades to HTTPS and falls back; strict (BLOCK) refuses
+  // plain HTTP. Only ALLOW leaves the connection un-upgraded.
   const bool https_enforced =
-      brave_shields::GetHttpsUpgradeControlType(map, empty) ==
-      brave_shields::BLOCK;
+      brave_shields::GetHttpsUpgradeControlType(map, empty) !=
+      brave_shields::ALLOW;
 
-  const brave_shields::ControlType fp =
-      brave_shields::GetFingerprintingControlType(map, empty);
-  const int32_t fp_score =
-      (fp == brave_shields::BLOCK)
-          ? 100
-          : (fp == brave_shields::BLOCK_THIRD_PARTY) ? 66 : 0;
+  // Fingerprinting: a checklist of protections that can be verified from live
+  // browser state. This is NOT a measure of how unique the browser is.
+  int32_t fp_active = 0;
+  int32_t fp_total = 0;
+  std::string fp_missing;
+  auto check = [&](bool ok, const char* name) {
+    ++fp_total;
+    if (ok) {
+      ++fp_active;
+    } else {
+      if (!fp_missing.empty()) {
+        fp_missing += ", ";
+      }
+      fp_missing += name;
+    }
+  };
+  // 1. Shields fingerprinting protection on by default (farbling + uniform
+  //    values of docs/privacy/fingerprinting/policy.md).
+  check(brave_shields::GetFingerprintingControlType(map, empty) !=
+            brave_shields::ALLOW,
+        "Shields fingerprinting protection");
+  // 2. Accept-Language / navigator.languages reduction.
+  check(brave_shields::IsReduceLanguageEnabledForProfile(profile_->GetPrefs()),
+        "language reduction");
+  // 3. Screen / window size protection (screen.*, outer*, device-width).
+  check(base::FeatureList::IsEnabled(
+            blink::features::kBraveBlockScreenFingerprinting),
+        "screen size protection");
+  // 4. WebRTC must not expose local/public interface IPs.
+  const std::string webrtc_policy =
+      profile_->GetPrefs()->GetString(prefs::kWebRTCIPHandlingPolicy);
+  check(webrtc_policy == "disable_non_proxied_udp" ||
+            webrtc_policy == "default_public_interface_only",
+        "WebRTC IP handling");
 
   const bool cookies_isolated =
       brave_shields::GetCookieControlType(
@@ -74,7 +138,9 @@ auren::mojom::SecurityStatePtr AurenSecurityHandler::BuildSecurityState()
   state->js_enabled = js_enabled;
   state->https_enforced = https_enforced;
   state->cookies_isolated = cookies_isolated;
-  state->fingerprint_score = fp_score;
+  state->fingerprint_protections_active = fp_active;
+  state->fingerprint_protections_total = fp_total;
+  state->fingerprint_protections_missing = fp_missing;
 
 #if BUILDFLAG(ENABLE_TOR)
   // AurenNewTabUI (the only place this handler is attached) is never
@@ -93,6 +159,20 @@ auren::mojom::SecurityStatePtr AurenSecurityHandler::BuildSecurityState()
   // (that lives in Arti's circuit state, not TorProfileService); leave
   // unset rather than guessing.
   state->tor_exit_country = "";
+#if BUILDFLAG(ENABLE_TOR)
+  {
+    // Exit country of the circuit currently carrying traffic, from the
+    // tracker (tor's own GeoIP file; nothing leaves the machine).
+    const auto& circuits = TorLauncherFactory::GetInstance()
+                               ->GetCircuitTracker()
+                               ->snapshot()
+                               .circuits;
+    if (!circuits.empty() && !circuits.front().hops.empty()) {
+      state->tor_exit_country =
+          base::ToUpperASCII(circuits.front().hops.back().country);
+    }
+  }
+#endif
 
   // DNS is considered "active" (DoH engaged) when the resolver mode is
   // anything other than the plain system resolver.
@@ -120,6 +200,21 @@ void AurenSecurityHandler::SetHttpsOnlyMode(bool enabled) {
       map, enabled ? brave_shields::BLOCK : brave_shields::ALLOW, GURL());
 }
 
+void AurenSecurityHandler::HandleOpenTor(const base::ListValue& args) {
+#if BUILDFLAG(ENABLE_TOR)
+  if (TorLauncherFactory::GetInstance()->IsTorConnected()) {
+    web_ui()->GetWebContents()->OpenURL(
+        content::OpenURLParams(GURL("chrome://tor-circuit/"),
+                               content::Referrer(),
+                               WindowOpenDisposition::NEW_FOREGROUND_TAB,
+                               ui::PAGE_TRANSITION_LINK, false),
+        /*navigation_handle_callback=*/{});
+  } else {
+    brave::NewOffTheRecordWindowTor(profile_->GetOriginalProfile());
+  }
+#endif
+}
+
 void AurenSecurityHandler::HandleGetSecurityState(
     const base::ListValue& args) {
   AllowJavascript();
@@ -127,12 +222,45 @@ void AurenSecurityHandler::HandleGetSecurityState(
   base::DictValue dict;
   dict.Set("js_enabled", s->js_enabled);
   dict.Set("https_enforced", s->https_enforced);
+  dict.Set("https_strict",
+           brave_shields::GetHttpsUpgradeControlType(
+               HostContentSettingsMapFactory::GetForProfile(profile_),
+               GURL()) == brave_shields::BLOCK);
   dict.Set("cookies_isolated", s->cookies_isolated);
-  dict.Set("fingerprint_score", s->fingerprint_score);
+  dict.Set("fp_active", s->fingerprint_protections_active);
+  dict.Set("fp_total", s->fingerprint_protections_total);
+  dict.Set("fp_missing", s->fingerprint_protections_missing);
   dict.Set("tor_active", s->tor_active);
   dict.Set("tor_exit_country", s->tor_exit_country);
   dict.Set("dns_active", s->dns_active);
   CallJavascriptFunction("onSecurityState", base::Value(std::move(dict)));
+
+  // The measured audit result (if any) arrives separately.
+  base::ThreadPool::PostTaskAndReplyWithResult(
+      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
+      base::BindOnce(&ReadAuditSummary, profile_->GetPath().Append(kAuditFileName)),
+      base::BindOnce(&AurenSecurityHandler::OnFingerprintAuditRead,
+                     weak_factory_.GetWeakPtr()));
+}
+
+void AurenSecurityHandler::OnFingerprintAuditRead(
+    std::optional<base::DictValue> summary) {
+  if (!IsJavascriptAllowed()) {
+    return;
+  }
+  base::DictValue out;
+  out.Set("measured", summary.has_value());
+  if (summary) {
+    // Only forward the fields the page renders; never echo arbitrary file
+    // content into the WebUI.
+    if (const std::string* v = summary->FindString("date")) out.Set("date", *v);
+    if (const std::string* v = summary->FindString("policy")) out.Set("policy", *v);
+    if (const std::string* v = summary->FindString("browser")) out.Set("browser", *v);
+    if (std::optional<int> v = summary->FindInt("fail")) out.Set("fail", *v);
+    if (std::optional<int> v = summary->FindInt("warn")) out.Set("warn", *v);
+    if (std::optional<int> v = summary->FindInt("pass")) out.Set("pass", *v);
+  }
+  CallJavascriptFunction("onFingerprintAudit", base::Value(std::move(out)));
 }
 
 void AurenSecurityHandler::HandleSetJsEnabled(const base::ListValue& args) {

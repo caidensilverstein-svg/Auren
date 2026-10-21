@@ -4,3 +4,7 @@ node_modules
 *.pyc
 __pycache__/
 scripts/fingerprint-audit/out/
+
+# macOS AppleDouble files from tar
+._*
+.DS_Store
