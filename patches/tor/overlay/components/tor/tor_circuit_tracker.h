@@ -74,8 +74,11 @@ struct TorCircuitSnapshot {
   ~TorCircuitSnapshot();
 
   bool running = false;
-  // Circuits that carry user traffic (general / conflux), in-use first.
+  // Circuits carrying traffic now; when none is, the last circuit that did
+  // (marked by having no targets), or else the next spare one.
   std::vector<TorCircuitInfo> circuits;
+  // Built general circuits that are not shown (tor keeps spares ready).
+  int spare_count = 0;
   // Newest first.
   std::vector<TorPathChange> history;
 };
@@ -164,6 +167,8 @@ class TorCircuitTracker {
 
   TorCircuitSnapshot snapshot_;
   std::string last_path_key_;
+  bool has_last_used_ = false;
+  TorCircuitInfo last_used_;
 
   base::ObserverList<Observer>::Unchecked observers_;
   base::WeakPtrFactory<TorCircuitTracker> weak_ptr_factory_{this};

@@ -85,6 +85,7 @@ constexpr char kAurenTorHtml[] = R"HTML(<!doctype html>
   <section>
     <h2>Current path</h2>
     <div id="circuits"></div>
+    <div class="meta" id="spare"></div>
   </section>
 
   <section>
@@ -188,11 +189,13 @@ constexpr char kAurenTorHtml[] = R"HTML(<!doctype html>
   window.onTorState = function (s) {
     var pill = document.getElementById('pill');
     pill.className = 'pill';
-    if (s.connected) { pill.textContent = 'Connected' + (s.version ? ' · Tor ' + s.version : ''); pill.classList.add('on'); }
+    if (s.connected) { pill.textContent = 'Connected' + (s.version ? ' · Tor ' + s.version.split(' ')[0] : ''); pill.classList.add('on'); }
     else if (s.running && s.bootstrap_percent) { pill.textContent = 'Connecting… ' + s.bootstrap_percent + '%'; }
     else if (s.running) { pill.textContent = 'Starting…'; }
     else { pill.textContent = 'Tor not running'; }
     renderCircuits(s.circuits || [], !!s.running);
+    var spare = document.getElementById('spare');
+    spare.textContent = s.spare_count ? s.spare_count + ' spare circuit' + (s.spare_count === 1 ? '' : 's') + ' ready (Tor keeps these built in advance)' : '';
     renderHistory(s.history || []);
   };
 
@@ -272,7 +275,7 @@ void AurenTorHandler::OnJavascriptDisallowed() {
     return;
   }
   observing_ = false;
-  auto* factory = tor::TorLauncherFactory::GetInstance();
+  auto* factory = TorLauncherFactory::GetInstance();
   factory->GetCircuitTracker()->RemoveObserver(this);
   factory->RemoveObserver(this);
 }
@@ -281,7 +284,7 @@ void AurenTorHandler::HandleGetTorState(const base::ListValue& args) {
   AllowJavascript();
   if (!observing_) {
     observing_ = true;
-    auto* factory = tor::TorLauncherFactory::GetInstance();
+    auto* factory = TorLauncherFactory::GetInstance();
     factory->GetCircuitTracker()->AddObserver(this);
     factory->AddObserver(this);
   }
@@ -289,7 +292,7 @@ void AurenTorHandler::HandleGetTorState(const base::ListValue& args) {
 }
 
 void AurenTorHandler::HandleNewIdentity(const base::ListValue& args) {
-  tor::TorLauncherFactory::GetInstance()->GetCircuitTracker()->NewIdentity();
+  TorLauncherFactory::GetInstance()->GetCircuitTracker()->NewIdentity();
 }
 
 void AurenTorHandler::HandleOpenTorWindow(const base::ListValue& args) {
@@ -317,7 +320,7 @@ void AurenTorHandler::OnTorLaunched(bool result, int64_t pid) {
 }
 
 base::DictValue AurenTorHandler::BuildState() const {
-  auto* factory = tor::TorLauncherFactory::GetInstance();
+  auto* factory = TorLauncherFactory::GetInstance();
   const tor::TorCircuitSnapshot& snapshot =
       factory->GetCircuitTracker()->snapshot();
 
@@ -349,6 +352,7 @@ base::DictValue AurenTorHandler::BuildState() const {
     circuits.Append(std::move(c));
   }
   state.Set("circuits", std::move(circuits));
+  state.Set("spare_count", snapshot.spare_count);
 
   base::ListValue history;
   for (const tor::TorPathChange& change : snapshot.history) {

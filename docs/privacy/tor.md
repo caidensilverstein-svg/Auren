@@ -33,9 +33,11 @@ both are shown.
 ## Where the Tor binary comes from
 
 Not from Brave's component server. `scripts/tor/make_bundle.sh` assembles the Tor Project's
-`tor-expert-bundle` into `Auren.app/Contents/Resources/tor-bundle`. On first use
-`BraveTorClientUpdater` copies it to `<profile>/<tor client dir>/auren-tor-<VERSION>` and uses it;
-the component updater is only the fallback when no bundle is present.
+`tor-expert-bundle` and `scripts/tor/install_into_app.sh` puts it in
+`Auren.app/Contents/Resources/tor-bundle`. The browser runs `tor` **in place** from there
+(`GetBundledTorDir()`); the component updater is only the fallback when no bundle is present.
+For development, `AUREN_TOR_BUNDLE=<dir>` overrides the location (an environment variable, because the
+utility process that launches tor does not see the browser's command-line switches).
 
 Verifying a bundle (done on 2026-10-20 for 15.0.25 / tor 0.4.9.14):
 
@@ -44,8 +46,23 @@ Verifying a bundle (done on 2026-10-20 for 15.0.25 / tor 0.4.9.14):
    *Tor Browser Developers (signing key)*, primary fingerprint
    `EF6E 286D DA85 EA2A 4BA7  DE68 4E2C 6E87 9329 8290` (fetched via WKD for `torbrowser@torproject.org`).
 
-The bundle's binaries are unsigned, and macOS arm64 kills unsigned binaries, so the script ad-hoc signs them.
-For distribution they must be signed with Auren's own identity as part of app signing.
+The bundle's binaries are unsigned and macOS arm64 kills unsigned binaries, so the script ad-hoc signs them.
+For distribution they must be signed with Auren's identity as part of app signing.
+
+### Why in place, not copied
+
+The first design copied the bundle into the profile (where Brave keeps its component). On a non-notarized
+dev build that **hangs**: files written by Auren carry `com.apple.quarantine` / `com.apple.provenance`, and
+Gatekeeper silently holds the launch of the executable (process alive, 0 CPU, no output, no dialog).
+Clearing the quarantine flag did not help (the provenance tag comes back), while a byte-identical copy made
+from a shell ran instantly. Running from the app bundle avoids writing any executable at runtime.
+
+## Verified end to end (2026-10-20, Auren dev build, macOS arm64)
+
+* Bundled tor starts from the app, bootstraps, `IsTor: true` on `check.torproject.org`.
+* The exit the page showed equalled the IP the website saw, twice:
+  `194.32.107.172` (NO) then, after *New circuits*, `192.42.116.100` (NL). The history listed both.
+* Guard stayed the same across *New circuits*, as tor intends.
 
 ## Code
 
@@ -63,8 +80,9 @@ now supports them.
 
 * Bridges (obfs4 / snowflake) are not wired up; `lyrebird` is bundled but unused.
 * The Tor-window new-tab page does not embed the circuit view; open `chrome://tor-circuit`.
-* The bundle is not yet copied into `Auren.app` by the build; for development pass
-  `--auren-tor-bundle=<dir>`.
+* The build does not yet install the bundle into `Auren.app` automatically; run `install_into_app.sh`
+  (or set `AUREN_TOR_BUNDLE`).
+* Tor traffic itself was not captured through the telemetry audit yet; only the page's data was verified.
 * Linux / Windows bundles are not produced.
 * `NEWNYM` is rate-limited by tor (about every 10 s) and affects all sites, unlike Brave's per-site
   "New Tor circuit for this site".

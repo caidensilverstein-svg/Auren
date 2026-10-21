@@ -29,7 +29,7 @@ class AurenTorUI : public content::WebUIController {
 
 class AurenTorHandler : public content::WebUIMessageHandler,
                         public tor::TorCircuitTracker::Observer,
-                        public tor::TorLauncherObserver {
+                        public TorLauncherObserver {
  public:
   AurenTorHandler();
   ~AurenTorHandler() override;
@@ -44,7 +44,7 @@ class AurenTorHandler : public content::WebUIMessageHandler,
   // tor::TorCircuitTracker::Observer:
   void OnTorCircuitsChanged() override;
 
-  // tor::TorLauncherObserver:
+  // TorLauncherObserver:
   void OnTorInitializing(const std::string& percentage,
                          const std::string& summary) override;
   void OnTorCircuitEstablished(bool result) override;

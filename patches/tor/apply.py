@@ -239,44 +239,36 @@ edit(T + "BUILD.gn",
      marker='"tor_circuit_tracker.cc"')
 
 
-# --- bundled tor client ------------------------------------------------------
-U = T + "brave_tor_client_updater"
-edit(U + ".h",
-     "  void RemoveObsoleteFiles();\n",
-     "  void RemoveObsoleteFiles();\n\n"
-     "  // Auren: called with the install dir of the tor client shipped inside the\n"
-     "  // app, or an empty path when there is none (then the component is used).\n"
-     "  void OnBundledTorInstalled(base::FilePath install_dir);\n",
-     marker="void OnBundledTorInstalled(")
+# --- bundled tor client (run in place from the app bundle) -------------------
+edit(T + "constants.h",
+     "base::FilePath GetTorClientDirectory();\n",
+     """base::FilePath GetTorClientDirectory();
 
-edit(U + ".cc",
-     '#include "base/files/file_util.h"\n',
-     '#include "base/files/file_util.h"\n'
-     '#include "base/functional/bind.h"\n'
-     '#include "base/strings/string_util.h"\n',
-     marker='#include "base/strings/string_util.h"')
-edit(U + ".cc",
-     '#include "build/build_config.h"\n',
-     '#include "build/build_config.h"\n'
+// Auren: the tor client ships inside the app and is run in place, never copied
+// (copies written by a non-notarized app are held by Gatekeeper). The updater
+// reports this sentinel as the install dir and the launcher resolves it to
+// GetBundledTorDir(). Empty when the platform has no bundle.
+inline constexpr char kBundledInstallDirName[] = "auren-tor-bundle";
+base::FilePath GetBundledTorDir();
+""",
+     marker="kBundledInstallDirName[]")
+edit(T + "constants.cc",
+     '#include "base/files/file_path.h"\n',
+     '#include <memory>\n#include <optional>\n#include <string>\n\n'
+     '#include "base/environment.h"\n'
+     '#include "base/files/file_path.h"\n'
      '#if BUILDFLAG(IS_MAC)\n#include "base/apple/bundle_locations.h"\n#endif\n',
-     marker='#include "base/apple/bundle_locations.h"')
-
-# accept the bundled client's file name as well as Brave's component name
-edit(U + ".cc",
-     '"tor-\\\\d+\\\\.\\\\d+\\\\.\\\\d+\\\\.\\\\d+-\\\\w+(-\\\\w+)?-brave-\\\\d+"',
-     '"tor-\\\\d+\\\\.\\\\d+\\\\.\\\\d+\\\\.\\\\d+-\\\\w+(-\\\\w+)?-(brave|auren)-\\\\d+"',
-     marker="(brave|auren)")
-
-edit(U + ".cc",
-     "base::FilePath InitTorPath(const base::FilePath& install_dir) {\n",
-     r"""// Auren: the tor client ships inside the app (the Tor Project's expert
-// bundle, assembled by scripts/tor/make_bundle.sh) so that no component
-// server is contacted to obtain it.
-base::FilePath BundledTorDir() {
-  const base::CommandLine& command_line =
-      *base::CommandLine::ForCurrentProcess();
-  if (command_line.HasSwitch("auren-tor-bundle")) {
-    return command_line.GetSwitchValuePath("auren-tor-bundle");
+     marker='#include "base/environment.h"')
+edit(T + "constants.cc",
+     "base::FilePath GetClientExecutablePath(const base::SafeBaseName& install_dir,\n"
+     "                                       const base::SafeBaseName& executable) {\n",
+     """base::FilePath GetBundledTorDir() {
+  // Development override. Environment variables reach the utility process
+  // that launches tor, command-line switches of the browser do not.
+  std::unique_ptr<base::Environment> env = base::Environment::Create();
+  if (std::optional<std::string> dir = env->GetVar("AUREN_TOR_BUNDLE");
+      dir && !dir->empty()) {
+    return base::FilePath::FromUTF8Unsafe(*dir);
   }
 #if BUILDFLAG(IS_MAC)
   return base::apple::OuterBundlePath()
@@ -288,46 +280,55 @@ base::FilePath BundledTorDir() {
 #endif
 }
 
-// Copies the bundle to <tor client dir>/auren-tor-<VERSION> unless that
-// already exists, and returns the directory (empty if there is no usable
-// bundle). Blocking; runs on the updater's task runner.
-base::FilePath InstallBundledTor(const base::FilePath& bundle,
-                                 const base::FilePath& client_dir) {
-  if (bundle.empty() || !base::DirectoryExists(bundle)) {
+base::FilePath GetClientExecutablePath(const base::SafeBaseName& install_dir,
+                                       const base::SafeBaseName& executable) {
+  if (install_dir.path().MaybeAsASCII() == kBundledInstallDirName) {
+    return GetBundledTorDir().Append(executable.path());
+  }
+""",
+     marker="base::FilePath GetBundledTorDir() {")
+edit(T + "constants.cc",
+     "base::FilePath GetTorRcPath(const base::SafeBaseName& install_dir) {\n",
+     """base::FilePath GetTorRcPath(const base::SafeBaseName& install_dir) {
+  if (install_dir.path().MaybeAsASCII() == kBundledInstallDirName) {
+    return GetBundledTorDir().Append(kTorRcFilename);
+  }
+""",
+     marker="return GetBundledTorDir().Append(kTorRcFilename);")
+
+U = T + "brave_tor_client_updater"
+edit(U + ".h",
+     "  void RemoveObsoleteFiles();\n",
+     "  void RemoveObsoleteFiles();\n\n"
+     "  // Auren: called with the directory of the tor client shipped inside the\n"
+     "  // app, or an empty path when there is none (then the component is used).\n"
+     "  void OnBundledTorFound(base::FilePath bundle_dir);\n",
+     marker="void OnBundledTorFound(")
+edit(U + ".cc",
+     '#include "base/files/file_util.h"\n',
+     '#include "base/files/file_util.h"\n'
+     '#include "base/functional/bind.h"\n',
+     marker='#include "base/functional/bind.h"')
+# accept the bundled client's file name as well as Brave's component name
+edit(U + ".cc",
+     '"tor-\\\\d+\\\\.\\\\d+\\\\.\\\\d+\\\\.\\\\d+-\\\\w+(-\\\\w+)?-brave-\\\\d+"',
+     '"tor-\\\\d+\\\\.\\\\d+\\\\.\\\\d+\\\\.\\\\d+-\\\\w+(-\\\\w+)?-(brave|auren)-\\\\d+"',
+     marker="(brave|auren)")
+edit(U + ".cc",
+     "base::FilePath InitTorPath(const base::FilePath& install_dir) {\n",
+     """// Auren: the bundle is usable when it holds a tor binary and its torrc.
+// Blocking; runs on the updater's task runner.
+base::FilePath FindBundledTor(const base::FilePath& bundle) {
+  if (bundle.empty() || !base::DirectoryExists(bundle) ||
+      !base::PathExists(bundle.Append(FILE_PATH_LITERAL("tor-torrc")))) {
     return base::FilePath();
   }
-  std::string version;
-  if (!base::ReadFileToString(bundle.AppendASCII("VERSION"), &version)) {
-    return base::FilePath();
-  }
-  base::TrimWhitespaceASCII(version, base::TRIM_ALL, &version);
-  // The version becomes part of a directory name.
-  if (version.empty() || version.size() > 32 ||
-      !std::ranges::all_of(version, [](char c) {
-        return base::IsAsciiAlphaNumeric(c) || c == '.' || c == '-';
-      })) {
-    return base::FilePath();
-  }
-  const base::FilePath dest = client_dir.AppendASCII("auren-tor-" + version);
-  if (!base::DirectoryExists(dest)) {
-    const base::FilePath tmp = dest.AddExtensionASCII("tmp");
-    base::DeletePathRecursively(tmp);
-    if (!base::CreateDirectory(client_dir) ||
-        !base::CopyDirectory(bundle, tmp, /*recursive=*/true) ||
-        !base::Move(tmp, dest)) {
-      LOG(ERROR) << "Failed to install the bundled Tor client to "
-                 << dest.value();
-      base::DeletePathRecursively(tmp);
-      return base::FilePath();
-    }
-  }
-  return dest;
+  return bundle;
 }
 
 base::FilePath InitTorPath(const base::FilePath& install_dir) {
 """,
-     marker="base::FilePath BundledTorDir()")
-
+     marker="base::FilePath FindBundledTor(")
 edit(U + ".cc",
      """  BraveComponent::Register(kTorClientComponentName, kTorClientComponentId,
                            kTorClientComponentBase64PublicKey);
@@ -338,26 +339,24 @@ edit(U + ".cc",
   // Auren: prefer the tor client bundled with the app; only fall back to the
   // component server when the bundle is missing.
   task_runner_->PostTaskAndReplyWithResult(
-      FROM_HERE,
-      base::BindOnce(&InstallBundledTor, BundledTorDir(),
-                     GetTorClientDirectory()),
-      base::BindOnce(&BraveTorClientUpdater::OnBundledTorInstalled,
+      FROM_HERE, base::BindOnce(&FindBundledTor, GetBundledTorDir()),
+      base::BindOnce(&BraveTorClientUpdater::OnBundledTorFound,
                      weak_ptr_factory_.GetWeakPtr()));
 }
 
-void BraveTorClientUpdater::OnBundledTorInstalled(
-    base::FilePath install_dir) {
-  if (install_dir.empty()) {
+void BraveTorClientUpdater::OnBundledTorFound(base::FilePath bundle_dir) {
+  if (bundle_dir.empty()) {
     BraveComponent::Register(kTorClientComponentName, kTorClientComponentId,
                              kTorClientComponentBase64PublicKey);
     return;
   }
-  install_dir_ = install_dir;
-  OnComponentReady(kTorClientComponentId, install_dir, std::string());
+  // Finds the executable inside the bundle, then reports the sentinel as the
+  // install dir so the launcher runs it in place.
+  OnComponentReady(kTorClientComponentId, bundle_dir, std::string());
+  install_dir_ = base::FilePath(kBundledInstallDirName);
 }
 """,
-     marker="void BraveTorClientUpdater::OnBundledTorInstalled(")
-
+     marker="void BraveTorClientUpdater::OnBundledTorFound(")
 
 # --- chrome://tor-circuit page + NTP wiring ----------------------------------
 B = "browser/ui/"
@@ -476,5 +475,17 @@ edit(T + "BUILD.gn",
      '    "tor_control_unittest.cc",\n',
      '    "tor_circuit_tracker_unittest.cc",\n    "tor_control_unittest.cc",\n',
      marker='"tor_circuit_tracker_unittest.cc"')
+
+# The bar's initial HTML hard-coded "good" mock values (DE / On / Enforced...).
+# Show neutral placeholders until the real state arrives.
+import re
+_p = path("browser/ui/webui/auren_new_tab_ui.cc")
+_s = open(_p).read()
+_new, _n = re.subn(
+    r'(id="val-(?:tor|dns|js|https|cookies)"[^>]*>)(?:DE|On|Enforced|Isolated)(</span>)',
+    r'\1&hellip;\2', _s)
+if _n:
+    open(_p, "w").write(_new)
+print("placeholders:", _n)
 
 print("done")

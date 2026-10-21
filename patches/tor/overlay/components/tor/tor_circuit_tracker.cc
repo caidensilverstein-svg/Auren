@@ -196,6 +196,8 @@ void TorCircuitTracker::Stop() {
   targets_by_circuit_.clear();
   snapshot_.running = false;
   snapshot_.circuits.clear();
+  snapshot_.spare_count = 0;
+  has_last_used_ = false;
   // The path history is kept for the session so users can still see where
   // they exited before Tor was stopped. It is never persisted.
   Notify();
@@ -339,7 +341,9 @@ void TorCircuitTracker::OnRouterStatus(std::string fingerprint,
     }
   }
   if (ip.empty()) {
-    // Not in the consensus (anymore); leave the placeholder and move on.
+    // Not known yet (descriptors may still be loading). Drop the placeholder
+    // so the next refresh tries again, and move on.
+    relay_cache_.erase(fingerprint);
     if (!resolve_queue_.empty()) {
       resolve_queue_.pop_front();
     }
@@ -419,12 +423,33 @@ void TorCircuitTracker::Rebuild() {
     }
     circuits.push_back(std::move(info));
   }
-  // Circuits that are carrying streams first.
-  std::stable_sort(circuits.begin(), circuits.end(),
-                   [](const TorCircuitInfo& a, const TorCircuitInfo& b) {
-                     return a.targets.size() > b.targets.size();
-                   });
-  snapshot_.circuits = std::move(circuits);
+  // Show the circuits carrying streams. Tor keeps many spare circuits built,
+  // which would bury the one in use, so when nothing is carrying traffic show
+  // the last circuit that did (still built), or else the first spare.
+  std::vector<TorCircuitInfo> active;
+  std::vector<TorCircuitInfo> idle;
+  for (TorCircuitInfo& c : circuits) {
+    (c.targets.empty() ? idle : active).push_back(std::move(c));
+  }
+  const size_t total = active.size() + idle.size();
+  if (!active.empty()) {
+    last_used_ = active.front();
+    has_last_used_ = true;
+    snapshot_.circuits = std::move(active);
+  } else {
+    snapshot_.circuits.clear();
+    if (has_last_used_) {
+      auto still_built = std::ranges::find(idle, last_used_.id, &TorCircuitInfo::id);
+      if (still_built != idle.end()) {
+        snapshot_.circuits.push_back(*still_built);
+      }
+    }
+    if (snapshot_.circuits.empty() && !idle.empty()) {
+      snapshot_.circuits.push_back(idle.front());
+    }
+  }
+  snapshot_.spare_count =
+      static_cast<int>(total) - static_cast<int>(snapshot_.circuits.size());
 
   // Remember each change of the (guard, exit) pair that is carrying traffic,
   // i.e. the "IP jumps". Idle pre-built circuits are only used when nothing
@@ -444,7 +469,11 @@ void TorCircuitTracker::Rebuild() {
   }
   std::ranges::sort(keys);
   std::string key = base::JoinString(keys, "|");
-  if (first && !key.empty() && key != last_path_key_) {
+  // Only a circuit that actually carries a stream counts as a jump; tor keeps
+  // building idle spare circuits and those must not flood the history.
+  const bool carrying =
+      !snapshot_.circuits.empty() && !snapshot_.circuits.front().targets.empty();
+  if (carrying && first && !key.empty() && key != last_path_key_) {
     last_path_key_ = key;
     TorPathChange change;
     change.when = base::Time::Now();
