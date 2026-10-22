@@ -1272,7 +1272,7 @@ function buildServer(auth = LEGACY_AUTH) {
   }, async ({ direction = 'down', pixels = 500, tab_id }) => {
     try {
       return await withCDP(tab_id, async (client, target) => {
-        const r = await actScroll(client, target, direction, pixels, { mode: 'interactive', isDiff: false });
+        const r = await actScroll(client, target, direction, pixels, { mode: 'interactive', isDiff: false, maxItems: 15 });
         return { content: [{ type: 'text', text: r.xml }] };
       });
     } catch (e) {
