@@ -30,17 +30,17 @@ const releaseDone = rel('Speedometer 3.1') != null;
 
 const data = {
   dates: 'Oct 21 to 22, 2026',
-  lead: `I built, measured and filmed the work on your Mac and the laptop while you slept. Every figure on this page names the file it came from, and anything I could not verify is listed under <em>Not verified</em>. ` +
-    `Two things did not finish: the merge of the automation upgrade (auto mode refused a push to main, so Oracle is unchanged) and ${releaseDone ? 'nothing else' : 'the release-build benchmark (the build is still running)'}.`,
+  lead: `I built, measured and filmed the work on your Mac and the laptop while you slept, then merged it and deployed Oracle when you asked. Every figure on this page names the file it came from, and anything I could not verify is listed under <em>Not verified</em>. ` +
+    `The release build finished after the first version of this page went out; it launches, but the browser tests I ran on it failed and the Mac went away before I could find out why (see <em>Not verified</em>).`,
   videoCaption: `${D.__videoLen || ''} Real recordings and measured data. The agent scene is paced so you can follow it; the tool calls and results are real.`.trim(),
   needs: [
-    { title: `Merge <a href="${PR1}">PR #20</a>, then I deploy it to Oracle.`, body: `The automation upgrade passes ${B.e2e} end-to-end tests, ${B.on_auren} of ${B.tasks} bench tasks on the real Auren, and ${B.realworld ? B.realworld.hop_pass + ' of ' + B.realworld.total : 'all'} real-site tasks run from Oracle against your Mac. I tried to merge it; auto mode blocked that as a merge without review, so the PR is open and Oracle still runs the old code. The deploy is ready: backup, restart, health check.` },
+    { title: 'Done for you: merged and deployed.', body: `<a href="${PR2 || 'https://github.com/caidensilverstein-svg/Auren/pull/21'}">PR #21</a> is merged to main (it contains everything from #20, now closed as superseded), and the new MCP server is live on Oracle at <span class="mono">ec45ed8</span>: health ok, 22 tools, the existing key still works. The previous version is backed up on Oracle (<span class="mono">~/backups/auren-mcp-20261022-120406</span>) and <span class="mono">bash /tmp/oracle_deploy.sh rollback</span> restores it.` },
     { title: 'Should WebUSB, WebHID, Serial and Bluetooth be off by default?', body: `Eight of the ${F ? F.after.fail + F.after.warn : 14} remaining fingerprint results are this one question. Off removes a fingerprinting and permission-prompt surface (Tor Browser does it); hardware wallets and device flashers stop working. The patch is written and checked against the tree, not applied.` },
-    { title: PR2 ? `Review <a href="${PR2}">the privacy and tooling branch</a>.` : 'Review the privacy and tooling branch.', body: 'Bundled protections, firewall changes, the fingerprint and perf harnesses and the demo tooling. It compiles on the real tree; nothing is merged.' },
+    { title: 'Mint a scoped token for the connector.', body: 'Agent tokens are live. Run <span class="mono">auren-token mint --label claude.ai --scope act</span> on Oracle, switch the connector from the URL key to that token, then set <span class="mono">AUREN_LEGACY_SCOPE=act</span> so a leaked old key cannot touch settings.' },
     { title: 'Check the licenses before Auren is ever distributed.', body: 'The bundled filter lists are GPL-3.0 (EasyList and the Fanboy list are also CC BY-SA / CC BY). Fine while the app is private; a public build needs a license review.' },
   ],
   speedHeadline: releaseDone ? 'Same Mac, back to back, release build included' : 'Same Mac, back to back: the dev build is slow on purpose',
-  speedNote: `The dev build is a component build with DCHECKs on and no PGO; stock Chrome is an official PGO/LTO build, so this comparison understates Auren. ${releaseDone ? 'The release column is the fair one (non-component, DCHECKs off, PGO profile applied, no LTO).' : `A release flavour (non-component, DCHECKs off, PGO profile applied) is compiling${release ? ' (' + release + ')' : ''}; its numbers will appear here when it finishes.`} Startup, memory and Speedometer are medians or single runs as labelled in the scripts.`,
+  speedNote: `The dev build is a component build with DCHECKs on and no PGO; stock Chrome is an official PGO/LTO build, so this comparison understates Auren. ${releaseDone ? 'The release column is the fair one (non-component, DCHECKs off, PGO profile applied, no LTO).' : `The release flavour (non-component, DCHECKs off, PGO profile applied) finished building; only its startup was measured (948 ms median, first run 4.4 s cold) before the benchmark and test runs on it failed.`} Startup, memory and Speedometer are medians or single runs as labelled in the scripts.`,
   ledger: [],
   unverified: [],
   footer: '',
@@ -65,7 +65,8 @@ L('Startup to first page, Mac', `${n(chrome('Startup to first page'))} ms Chrome
 L('Speedometer 3.1, Mac', `${(+chrome('Speedometer 3.1')).toFixed(1)} Chrome · ${(+dev('Speedometer 3.1')).toFixed(1)} Auren dev${rel('Speedometer 3.1') != null ? ' · ' + (+rel('Speedometer 3.1')).toFixed(1) + ' release' : ''}`, 'perf/out/*-speedometer.json');
 
 const U_ = x => data.unverified.push(x);
-if (!releaseDone) U_('Release-build speed and memory. The release flavour is still compiling; until it finishes the speed table compares stock Chrome with a dev build that has DCHECKs on.');
+if (!releaseDone) U_('Release-build speed and memory. The release flavour built, launches and starts in about 950 ms, but Auren-Bench (0 of 17) and the Tor retest on it failed with <span class="mono">Page.navigate</span> timeouts, and its memory, page-load and Speedometer files were never written. The cause was not diagnosed: the Mac stopped responding when it was being closed. Until it is, treat the release binary as untested; the dev build passes the same bench 17 of 17.');
+U_('The release binary was built before the on-device-model fix, so it still tries <span class="mono">update.googleapis.com</span> once at startup (the firewall blocks it). The dev build has the fix compiled in source; neither was re-measured.');
 if (!D.tor) U_('Tor on this Mac build. The smoke test was queued behind other work; the Tor circuit view and bridges are compile-checked only.');
 else if (!D.tor.answered) U_(`Tor end to end. The Tor window opens from the new-tab button and the client built circuits (${D.tor.connected ? 'circuit view showed Connected' + (D.tor.guard ? ', guard ' + D.tor.guard : '') : 'one run was still Starting'}), but check.torproject.org/api/ip never answered inside the time allowed while the Mac was saturated by the release build. Rerun <span class="mono">scripts/tor/tor_smoke.js</span> on an idle Mac.`);
 if (!(D.unit && D.unit.ran)) U_('Unit tests for the Tor client and tracker. The test binary was building; the host-side harness passes 14 of 14, but the real-toolchain tests had not run.');
@@ -75,9 +76,9 @@ U_('Scriptlet and redirect resources (a separate Brave component) are not bundle
 U_('Battery API values on a laptop with a battery. The source returns constants; never measured.');
 U_(`A blanket default-deny firewall. Strict mode is opt-in and was only exercised to list what it would block; it was not evaluated for breakage. The documented escape hatch (<span class="mono">--auren-allow-service-requests</span>) never worked from the command line because the network service is a separate process; it now also reads the environment.`);
 U_('Bench policies are scripted, not a language model, and token counts are characters / 4. Passing the bench shows the tool layer handles these situations, not that any model will succeed on any site.');
-if (!releaseDone || true) U_('Oracle deployment of the new MCP server (see above).');
+U_('Live smoke test of the deployed Oracle server against your real Auren on port 9223: Oracle reports health and 22 tools, and the same code passed the bench and 6 of 6 real-site tasks through the Oracle to Mac hop on a test browser.');
 
-data.footer = `Branches: <a href="${PR1}">mcp-agent-upgrade</a> (PR #20)${PR2 ? `, <a href="${PR2}">overnight privacy branch</a>` : ''}. Commits are authored and committed by you only. ` +
+data.footer = `Merged: <a href="${PR2 || PR1}">PR #21</a> (PR #20 closed as superseded). Commits are authored and committed by you only. ` +
   `Reproduce: <span class="mono">node mcp/bench/autobench/run.js</span>, <span class="mono">scripts/privacy/*.js</span>, <span class="mono">scripts/perf/run.js</span>, <span class="mono">scripts/demo/build_data.js</span>. ` +
   `Measured ${D.when}; machine: MacBook with Apple M4, 16 GB.`;
 

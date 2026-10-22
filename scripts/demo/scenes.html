@@ -217,7 +217,7 @@ scene('context', 11000, t => {
 scene('speed', 15000, t => {
   const S = DATA.speed, d = 15000;
   const cols = S.cols;
-  const cell = (v, fmtf, k, best) => `<td style="opacity:${ease((t - k) / 500)};${best ? 'color:var(--gold);font-weight:700' : ''}">${v == null ? '<span class="mut">not built</span>' : fmtf(v)}</td>`;
+  const cell = (v, fmtf, k, best) => `<td style="opacity:${ease((t - k) / 500)};${best ? 'color:var(--gold);font-weight:700' : ''}">${v == null ? '<span class="mut">not measured</span>' : fmtf(v)}</td>`;
   const rowsHtml = S.rows.map((r, i) => `<tr style="border-top:1px solid var(--line)"><td>${r.label}<div class="mut" style="font-size:14px">${r.unit}</div></td>${cols.map((c, j) => cell(r.values[j], x => (+x).toLocaleString('en-US', { maximumFractionDigits: 1 }), 700 + i * 450 + j * 140, r.best === j)).join('')}</tr>`).join('');
   return frame(`
     <div class="abs" style="left:48px;top:44px"><div class="tag">Speed</div><div class="h2" style="margin-top:6px">${esc(S.headline)}</div></div>
