@@ -406,7 +406,9 @@ class SessionManager {
     });
     client.on('Target.detachedFromTarget', (p) => { session.frames.delete(p.sessionId); });
     client.on('Target.targetInfoChanged', (p) => { const f = session.frames.get(p.targetInfo?.sessionId); if (f) f.url = p.targetInfo.url; });
-    await client.Target.setAutoAttach({ autoAttach: true, waitForDebuggerOnStart: false, flatten: true }).catch(() => {});
+    // only iframes (not workers, service workers, ...): everything else would just add sessions nobody uses
+    await client.Target.setAutoAttach({ autoAttach: true, waitForDebuggerOnStart: false, flatten: true, filter: [{ type: 'iframe' }, { exclude: true }] })
+      .catch(() => client.Target.setAutoAttach({ autoAttach: true, waitForDebuggerOnStart: false, flatten: true }).catch(() => {}));
     // A native dialog blocks the page; remember it so tools can say so instead of hanging. window.open / target=_blank
     // popups are remembered so the action that caused them can report the new tab.
     client.Page.on('javascriptDialogOpening', (p) => { session.dialog = { type: p.type, message: p.message, defaultPrompt: p.defaultPrompt }; });
@@ -639,19 +641,24 @@ async function takeSnapshot(client, resolvedTabId, opts = {}) {
   state.eidFrame.clear();
   const owner = sessions._sessions.get(resolvedTabId);
   if (owner?.frames.size && !region) {
-    for (const fr of owner.frames.values()) {
-      try {
-        const rr = await client.send('Runtime.evaluate', { expression: snapshotJs(mode, null, maxItems, null), returnByValue: true, awaitPromise: true }, fr.sessionId);
-        const d = JSON.parse(rr?.result?.value || '{}');
-        if (!d.regions) continue;
-        if (typeof d.nextN === 'number') eidCounter = d.nextN;
-        const items = d.regions.flatMap(x => x.items);
-        for (const it of items) state.eidFrame.set(it.attrs.eid, fr.sessionId);
-        let host = ''; try { host = new URL(fr.url).host; } catch { /* about:blank etc. */ }
-        if (items.length) data.regions.push({ name: `frame ${host}`, items, more: 0 });
-        data.hidden = (data.hidden || 0) + (d.hidden || 0);
-      } catch { /* frame navigated away or detached */ }
-    }
+    // One CDP round trip per frame, all in flight at once (a page full of ad frames must not cost frames x link latency),
+    // each frame given its own eid range so the numbering stays unique, and capped so a pathological page stays bounded.
+    const frames = [...owner.frames.values()].filter(f => !/^(about:blank|chrome-error:)/.test(f.url || '')).slice(0, MAX_FRAME_SNAPSHOTS);
+    const base = eidCounter;
+    const results = await Promise.all(frames.map((fr, i) => {
+      const expression = snapshotJs(mode, null, maxItems, null).replace(`let n=${base};`, `let n=${base + (i + 1) * 1000};`);
+      return client.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }, fr.sessionId).then(rr => JSON.parse(rr?.result?.value || '{}')).catch(() => null);
+    }));
+    results.forEach((d, i) => {
+      if (!d || !d.regions) return;
+      const fr = frames[i];
+      const items = d.regions.flatMap(x => x.items);
+      for (const it of items) state.eidFrame.set(it.attrs.eid, fr.sessionId);
+      let host = ''; try { host = new URL(fr.url).host; } catch { /* odd url */ }
+      if (items.length) data.regions.push({ name: `frame ${host}`, items, more: d.regions.reduce((a, x) => a + (x.more || 0), 0) });
+      data.hidden = (data.hidden || 0) + (d.hidden || 0);
+    });
+    eidCounter = base + (frames.length + 1) * 1000;
   }
   // when the caller knows the URL from before the action, decide diff-vs-baseline from the
   // snapshot itself instead of paying another round trip to ask the page for location.href
@@ -765,6 +772,7 @@ async function popupXml(session, since) {
   return '\n' + lines.join('\n');
 }
 const sessionOf = (target) => sessions._sessions.get(target.id);
+const MAX_FRAME_SNAPSHOTS = 8;
 
 async function actClick(client, target, raw, snap = null) {
   const isEid = EID_RE.test(raw);
