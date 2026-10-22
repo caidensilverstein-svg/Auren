@@ -9,7 +9,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import Database from 'better-sqlite3';
+import { TokenStore } from '../lib/auth.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
@@ -484,6 +487,79 @@ test('automation: file upload needs the file_upload permission, which is denied 
   assert.match(await call(c, 'browser_upload', { selector: '#file', files: [f] }), /<uploaded count="1"/);
   assert.equal(JSON.parse(await call(c, 'browser_execute_js', { code: 'window.fname' })), 'auren-e2e-upload.txt');
   await c.close();
+});
+
+// ---- agent tokens (docs/design/user-auth.md steps 1-2) ----
+const authDb = () => new Database(path.join(homeDir, '.auren', 'auth.db'));
+async function connectWith(token) {
+  const client = new Client({ name: 'e2e', version: '0' });
+  await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${ports.mcp}/mcp`), { requestInit: { headers: { authorization: `Bearer ${token}` } } }));
+  return client;
+}
+const status = async (token) => (await fetch(`http://127.0.0.1:${ports.mcp}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) })).status;
+
+test('tokens: a read token can look but not act; an act token cannot touch settings', { skip }, async () => {
+  const db = authDb(); const store = new TokenStore(db);
+  const rd = store.mint({ label: 'reader', scope: 'read' }), ac = store.mint({ label: 'actor', scope: 'act' });
+  db.close();
+  const r = await connectWith(rd.token);
+  assert.match(await call(r, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/` }), /scope 'read'.*does not allow browser_navigate/);
+  assert.match(await call(r, 'browser_snapshot'), /<state|<error|<permission_denied>(?!This token)/);     // reading is allowed (the page may be anything)
+  assert.match(await call(r, 'browser_click', { selector: '#b' }), /scope 'read'/);
+  assert.match(await call(r, 'browser_execute_js', { code: '1' }), /scope 'read'/);
+  const a = await connectWith(ac.token);
+  assert.match(await call(a, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/` }), /<state/);
+  assert.match(await call(a, 'browser_click', { selector: '#b' }), /<state|permission/);
+  assert.match(await call(a, 'browser_set_permission', { action: 'fill', level: 'allow', reason: 'x' }), /scope 'act'.*browser_set_permission/);
+  await r.close(); await a.close();
+});
+
+test('tokens: wrong, expired and revoked tokens are a plain 404; revocation is immediate', { skip }, async () => {
+  const db = authDb(); const store = new TokenStore(db);
+  const good = store.mint({ label: 'good', scope: 'read' }), old = store.mint({ label: 'old', scope: 'read' }), gone = store.mint({ label: 'gone', scope: 'read' });
+  db.prepare('UPDATE tokens SET expires_at = ? WHERE id = ?').run(Date.now() - 1000, old.id);
+  assert.equal(await status(good.token), 200);
+  assert.equal(await status(old.token), 404);
+  assert.equal(await status('aur_' + 'x'.repeat(43)), 404);
+  assert.equal(await status(''), 404);
+  assert.equal(await status(gone.token), 200);
+  assert.equal(store.revoke('gone'), 1);
+  assert.equal(await status(gone.token), 404);                  // same token, next request
+  assert.equal(await status(good.token), 200);                  // others unaffected
+  db.close();
+});
+
+test('tokens: tokens and the admin key are not interchangeable; the database holds hashes only', { skip }, async () => {
+  const db = authDb(); const store = new TokenStore(db);
+  const t = store.mint({ label: 'xcheck', scope: 'settings' });
+  assert.equal((await admin('GET', '/permissions', null, t.token)).status, 401);          // agent token on the control plane
+  assert.equal(await status(ADMIN), 404);                                                   // admin secret on /mcp
+  const raw = fs.readFileSync(path.join(homeDir, '.auren', 'auth.db')).toString('latin1');
+  assert.ok(!raw.includes(t.token), 'token secret must not be stored');
+  assert.ok(db.prepare('SELECT 1 FROM tokens WHERE token_hash = ?').get(crypto.createHash('sha256').update(t.token).digest('hex')));
+  db.close();
+});
+
+test('tokens: audit rows name the token, and never contain its secret', { skip }, async () => {
+  const db = authDb(); const store = new TokenStore(db);
+  const t = store.mint({ label: 'audited', scope: 'act' });
+  db.close();
+  const c = await connectWith(t.token);
+  await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/` });
+  await c.close();
+  const log = fs.readFileSync(path.join(homeDir, '.auren', 'audit.log'), 'utf8');
+  const mine = log.split('\n').filter(l => l.includes(`"token":"${t.id}"`));
+  assert.ok(mine.length >= 1, 'audit rows carry the token id');
+  assert.ok(mine.every(l => l.includes('"user":"owner"')));
+  assert.ok(!log.includes(t.token), 'the secret never reaches the audit log');
+});
+
+test('tokens: the legacy key still works (path and bearer) and is logged as legacy', { skip }, async () => {
+  const c = await connect();
+  assert.match(await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/` }), /<state/);
+  await c.close();
+  const log = fs.readFileSync(path.join(homeDir, '.auren', 'audit.log'), 'utf8');
+  assert.ok(log.includes('"token":"legacy"'));
 });
 
 test('reports a structured offline error when Auren is unreachable', { skip }, async () => {

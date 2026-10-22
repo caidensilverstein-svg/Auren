@@ -15,6 +15,7 @@
   },
   "bin": {
     "auren-perm": "bin/auren-perm.js",
-    "auren-setup": "bin/auren-setup.js"
+    "auren-setup": "bin/auren-setup.js",
+    "auren-token": "bin/auren-token.js"
   }
 }

@@ -9,6 +9,7 @@ import os from 'os';
 import crypto from 'crypto';
 import Database from 'better-sqlite3';
 import { PAGE_LIB } from './lib/pagelib.js';
+import { TokenStore, scopeAllows } from './lib/auth.js';
 
 (function loadEnv() {
   try {
@@ -42,6 +43,15 @@ function keyMatches(candidate) {
   const b = crypto.createHash('sha256').update(KEY).digest();
   return crypto.timingSafeEqual(a, b);
 }
+
+// Agent tokens (docs/design/user-auth.md): hashed at rest, scoped, revocable. The shared AUREN_MCP_KEY keeps working
+// during migration and maps to user 'owner' with scope AUREN_LEGACY_SCOPE (default 'settings' = everything it could do
+// before; set it to 'act' to stop a leaked legacy key from filing permission/preference requests).
+const AUTH_DB_PATH = process.env.AUREN_AUTH_DB || path.join(os.homedir(), '.auren', 'auth.db');
+fs.mkdirSync(path.dirname(AUTH_DB_PATH), { recursive: true, mode: 0o700 });
+const tokens = new TokenStore(new Database(AUTH_DB_PATH));
+try { fs.chmodSync(AUTH_DB_PATH, 0o600); } catch { /* best effort */ }
+const LEGACY_AUTH = { user_id: 'owner', token_id: 'legacy', scope: ['read', 'act', 'settings'].includes(process.env.AUREN_LEGACY_SCOPE) ? process.env.AUREN_LEGACY_SCOPE : 'settings' };
 
 // --- Negotiated AI permissions (#10) ---
 const PERMS_PATH = path.join(os.homedir(), '.auren', 'agent_permissions.json');
@@ -132,32 +142,37 @@ function auditWrite(entry) {
 
 // Circuit breaker: a runaway or hijacked agent cannot fire unlimited state-changing actions.
 const MAX_ACTIONS_PER_MIN = Number(process.env.AUREN_MAX_ACTIONS_PER_MIN) || 120;
-const actionTimes = [];
+const actionTimes = new Map(); // token id -> timestamps of recent state-changing actions
 const STATE_CHANGING = new Set(['browser_click', 'browser_fill', 'browser_navigate', 'browser_execute_js', 'browser_act', 'browser_exec', 'browser_set_preference', 'browser_hover', 'browser_dialog', 'browser_upload']);
-function rateLimited(weight) {
+function rateLimited(weight, key = 'legacy') {
   const now = Date.now();
-  while (actionTimes.length && now - actionTimes[0] > 60_000) actionTimes.shift();
-  if (actionTimes.length + weight > MAX_ACTIONS_PER_MIN) return true;
-  for (let i = 0; i < weight; i++) actionTimes.push(now);
+  let times = actionTimes.get(key);
+  if (!times) actionTimes.set(key, times = []);
+  while (times.length && now - times[0] > 60_000) times.shift();
+  if (times.length + weight > MAX_ACTIONS_PER_MIN) return true;
+  for (let i = 0; i < weight; i++) times.push(now);
   return false;
 }
 
-function instrument(server) {
+function instrument(server, auth = LEGACY_AUTH) {
   const orig = server.registerTool.bind(server);
+  const who = { user: auth.user_id, token: auth.token_id };
   server.registerTool = (name, cfg, handler) => orig(name, cfg, async (args, extra) => {
     const t0 = Date.now();
     const p = loadPerms();
     let res;
-    if (p.panic && name !== 'browser_get_permissions') {
+    if (!scopeAllows(auth.scope, name)) {
+      res = { content: [{ type: 'text', text: `<permission_denied>This token has scope '${auth.scope}', which does not allow ${name}. Ask the user for a token with a higher scope (auren-token mint --scope ...).</permission_denied>` }] };
+    } else if (p.panic && name !== 'browser_get_permissions') {
       res = { content: [{ type: 'text', text: '<permission_denied>Agent access is suspended by the user (panic switch). Ask the user to run: auren-perm panic off</permission_denied>' }] };
-    } else if (STATE_CHANGING.has(name) && rateLimited(name === 'browser_exec' ? (args?.steps?.length || 1) : 1)) {
+    } else if (STATE_CHANGING.has(name) && rateLimited(name === 'browser_exec' ? (args?.steps?.length || 1) : 1, auth.token_id)) {
       res = { content: [{ type: 'text', text: `<error tool="${name}">Rate limit: more than ${MAX_ACTIONS_PER_MIN} actions in the last minute. Slow down or ask the user to raise AUREN_MAX_ACTIONS_PER_MIN.</error>` }] };
     } else {
-      try { res = await handler(args, extra); } catch (e) { auditWrite({ ts: new Date().toISOString(), tool: name, args: auditArgs(args), outcome: 'exception', ms: Date.now() - t0 }); throw e; }
+      try { res = await handler(args, extra); } catch (e) { auditWrite({ ts: new Date().toISOString(), ...who, tool: name, args: auditArgs(args), outcome: 'exception', ms: Date.now() - t0 }); throw e; }
     }
     const txt = (res?.content ?? []).map(c => c.text ?? '').join('');
     const outcome = (/<permission_denied>/.test(txt) || /ok="false"[^<]*>[^<]*(denied|blocked|suspended|only reading|requires user approval)/i.test(txt)) ? 'denied' : (/<error/.test(txt.slice(0, 120)) || /ok="false"/.test(txt)) ? 'error' : 'ok';
-    auditWrite({ ts: new Date().toISOString(), tool: name, args: auditArgs(args), outcome, ms: Date.now() - t0 });
+    auditWrite({ ts: new Date().toISOString(), ...who, tool: name, args: auditArgs(args), outcome, ms: Date.now() - t0 });
     return res;
   });
 }
@@ -586,7 +601,14 @@ const regions=[];
 for(const r of order){
   const els=groups.get(r);
   if(!els||!els.length)continue;
-  const take=els.slice(0,maxN);
+  // over the cap: show what is on screen first (then the rest in page order), but list everything in page order
+  let take=els;
+  if(els.length>maxN){
+    const vh=window.innerHeight;
+    const on=e=>{try{const r=e.getBoundingClientRect();return r.bottom>0&&r.top<vh;}catch(x){return false;}};
+    const idx=new Map(els.map((e,i)=>[e,i]));
+    take=[...els.filter(on),...els.filter(e=>!on(e))].slice(0,maxN).sort((a,b)=>idx.get(a)-idx.get(b));
+  }
   const items=take.map(el=>{const it=__L.info(el);const eid=it.kind+'-'+(++n);el.setAttribute('data-eid',eid);it.attrs.eid=eid;it._el=el;return it;});
   // controls whose names are not unique (six "Add to cart" buttons) or empty get their row context
   const seen=new Map();
@@ -920,9 +942,9 @@ const EID_RE = /^(btn|lnk|inp|sel|chk|h|elt|alert)-\d+$/;
 const errXml = (tool, msg) => ({ content: [{ type: 'text', text: `<error tool="${tool}">${escapeXml(msg)}</error>` }] });
 
 // --- MCP server ---
-function buildServer() {
+function buildServer(auth = LEGACY_AUTH) {
   const server = new McpServer({ name: 'auren-browser', version: '2.1.2' });
-  instrument(server);
+  instrument(server, auth);
 
   server.registerTool('browser_get_tabs', {
     description: 'List all open tabs in Auren',
@@ -1637,9 +1659,15 @@ app.use('/admin', admin);
 
 async function handleMcp(req, res) {
   const bearer = (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
-  if (KEY && !keyMatches(req.params.key ?? bearer)) return res.status(404).json({ error: 'not found' });
+  // The /mcp/<key> path form is the legacy shared key only; a bearer header may be the legacy key or an agent token.
+  // Anything else (missing, wrong, expired, revoked) is a plain 404 so the endpoint stays unadvertised.
+  let auth = null;
+  if (!KEY) auth = LEGACY_AUTH;
+  else if (req.params.key !== undefined) auth = keyMatches(req.params.key) ? LEGACY_AUTH : null;
+  else auth = keyMatches(bearer) ? LEGACY_AUTH : tokens.verify(bearer);
+  if (!auth) return res.status(404).json({ error: 'not found' });
   try {
-    const server = buildServer();
+    const server = buildServer(auth);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     res.on('close', () => { try { transport.close(); server.close(); } catch (_) {} });
     await server.connect(transport);
