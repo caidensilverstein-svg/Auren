@@ -1,0 +1,74 @@
+{
+ "summary": {
+  "playwright_core": "1.64.1",
+  "pages": 7,
+  "tokens_est": "chars/4",
+  "chars": {
+   "auren_interactive": 34358,
+   "auren_full": 38889,
+   "playwright": 237210,
+   "dom": 1745718
+  },
+  "ratio_playwright_over_auren_interactive": 6.9,
+  "ratio_playwright_over_auren_full": 6.1
+ },
+ "rows": [
+  {
+   "url": "https://en.wikipedia.org/wiki/Web_browser",
+   "auren_interactive": 7430,
+   "auren_full": 7502,
+   "dom": 614021,
+   "playwright": 74707
+  },
+  {
+   "url": "https://news.ycombinator.com/",
+   "auren_interactive": 3624,
+   "auren_full": 7316,
+   "dom": 35982,
+   "playwright": 40665
+  },
+  {
+   "url": "https://github.com/microsoft/playwright",
+   "auren_interactive": 7110,
+   "auren_full": 7633,
+   "dom": 515945,
+   "playwright": 47009
+  },
+  {
+   "url": "https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API",
+   "auren_interactive": 7591,
+   "auren_full": 7620,
+   "dom": 72077,
+   "playwright": 41791
+  },
+  {
+   "url": "https://www.bbc.com/news",
+   "auren_interactive": 7576,
+   "auren_full": 7649,
+   "dom": 337382,
+   "playwright": 31789
+  },
+  {
+   "url": "https://www.theguardian.com/international",
+   "auren_interactive": 7518,
+   "auren_full": 7621,
+   "dom": 1366188,
+   "error": "page.goto: Timeout 45000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://www.theguardian.com/in"
+  },
+  {
+   "url": "https://stackoverflow.com/questions/11227809/why-is-processing-a-sorted-array-faster-than-processing-an-unsorted-array",
+   "auren_interactive": 249,
+   "auren_full": 240,
+   "dom": 360,
+   "playwright": 617
+  },
+  {
+   "url": "https://www.reddit.com/r/programming/",
+   "auren_interactive": 778,
+   "auren_full": 929,
+   "dom": 169951,
+   "playwright": 632
+  }
+ ],
+ "when": "2026-10-22T03:39:38.340Z"
+}
