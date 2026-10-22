@@ -152,7 +152,9 @@ export function pageLib() {
 
   // Viewport coordinates of the element centre, correct inside nested same-origin iframes.
   function center(el) {
-    el.scrollIntoView({ block: 'center', inline: 'center' });
+    // 'nearest': scroll only when the element is off-screen. Scrolling an already visible element under the pointer
+    // would fire mouseleave and close the very hover menu the agent just opened.
+    el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     const r = el.getBoundingClientRect();
     let x = r.left + r.width / 2, y = r.top + r.height / 2;
     let w = el.ownerDocument.defaultView;
@@ -165,6 +167,17 @@ export function pageLib() {
     return { x: Math.round(x), y: Math.round(y) };
   }
 
+  // After a re-render the element behind an eid is gone. Find it again by what it was (kind, name, row context),
+  // but only when that is unambiguous; a wrong guess is worse than an error.
+  function relocate(m) {
+    if (!m || !m.text) return null;
+    const cands = all().filter(e => { try { return e.matches(INTERACTIVE) && vis(e); } catch (x) { return false; } });
+    const same = cands.filter(e => kind(e) === m.kind && name(e) === m.text);
+    if (!same.length) return null;
+    if (same.length === 1) return same[0];
+    const byCtx = m.ctx ? same.filter(e => context(e, m.text) === m.ctx) : [];
+    return byCtx.length === 1 ? byCtx[0] : null;
+  }
   const byEid = id => { for (const e of all()) if (e.getAttribute('data-eid') === id) return e; return null; };
   const clearEids = () => { for (const e of all()) if (e.hasAttribute('data-eid')) e.removeAttribute('data-eid'); };
   const CSSY = q => /^[.#[*]/.test(q) || q.includes('>') || /\s[.#[]/.test(q) || /^[a-z][a-z0-9-]*[.#[:]/i.test(q);
@@ -207,7 +220,7 @@ export function pageLib() {
     return hits.slice(0, limit);
   }
 
-  return { norm, cut, vis, name, kind, info, context, center, all, byEid, clearEids, deepQuery, resolve, textOf,
+  return { norm, cut, vis, name, kind, info, context, center, all, byEid, clearEids, deepQuery, resolve, textOf, parentOf, relocate,
     INTERACTIVE, FULL, OUTLINE, CSSY };
 }
 

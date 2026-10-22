@@ -47,6 +47,22 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>Fixture Page</title>
 <button id="zw">ok\u200Bgo\u202Eevil</button>
 </main>`;
 
+
+// Accessible names, shadow DOM, a same-origin iframe, a native dialog, a hover menu, a file input.
+const WIDGETS = `<!doctype html><meta charset="utf-8"><title>Widgets</title><main>
+<label>Email address <input id="em" type="email"></label>
+<label>Plan <select id="pl"><option>Free</option><option>Pro</option></select></label>
+<label><input type="checkbox" id="tos"> I accept the terms</label>
+<div class="item"><span>Red Mug $9</span> <button class="add">Add to cart</button></div>
+<div class="item"><span>Blue Mug $12</span> <button class="add">Add to cart</button></div>
+<x-w></x-w>
+<iframe id="fr" srcdoc="<button id='ib' onclick=&quot;parent.window.framed=(parent.window.framed||0)+1&quot;>Frame button</button>"></iframe>
+<button id="del" onclick="window.answer=confirm('Really delete?')">Delete</button>
+<div id="menu" onmouseenter="window.hov=1;sub.hidden=false" onmouseleave="sub.hidden=true"><span tabindex="0">Products</span><div id="sub" hidden><a href="#" onclick="window.picked=1;return false">Pricing</a></div></div>
+<input type="file" id="file" onchange="window.fname=file.files[0].name">
+</main><script>customElements.define('x-w',class extends HTMLElement{constructor(){super();const r=this.attachShadow({mode:'open'});
+r.innerHTML='<label>Nick <input id="nick"></label><button id="sv">Save nick</button>';r.getElementById('sv').onclick=()=>{window.nick=r.getElementById('nick').value}}})</script>`;
+
 let chrome, fixture, mcp, chromeDir, homeDir, ports = {};
 const chromePath = findChrome();
 const skip = chromePath ? false : 'Chrome not found (set CHROME_BIN)';
@@ -93,7 +109,7 @@ before(async () => {
   ports = { cdp: await freePort(), mcp: await freePort(), web: await freePort() };
   homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'auren-mcp-home-'));
   chromeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'auren-mcp-chrome-'));
-  fixture = http.createServer((_, res) => { res.setHeader('content-type', 'text/html'); res.end(PAGE); })
+  fixture = http.createServer((req, res) => { res.setHeader('content-type', 'text/html'); res.end(req.url.startsWith('/widgets') ? WIDGETS : PAGE); })
     .listen(ports.web, '127.0.0.1');
   chrome = spawn(chromePath, ['--headless=new', '--no-sandbox', '--disable-gpu', `--user-data-dir=${chromeDir}`,
     `--remote-debugging-port=${ports.cdp}`, `--remote-debugging-address=127.0.0.1`, 'about:blank'], { stdio: 'ignore' });
@@ -395,6 +411,79 @@ test('safety: rate limit stops runaway action loops', { skip }, async () => {
   p.kill('SIGKILL');
   assert.equal(outs.filter(o => /Rate limit/.test(o)).length, 2);
   await c.close().catch(() => {});
+});
+
+test('automation: labelled controls are named, duplicates carry row context, act finds them by label', { skip }, async () => {
+  const c = await connect();
+  await grant(c, 'js_execute');
+  await grant(c, 'fill'); await grant(c, 'click');
+  const snap = await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/widgets` });
+  assert.match(snap, /<inp [^>]*>Email address<\/inp>/);
+  assert.match(snap, /<chk [^>]*>I accept the terms<\/chk>/);
+  assert.match(snap, /<sel [^>]*val="Free"[^>]*opts="Free\|Pro"[^>]*>Plan<\/sel>/);
+  assert.match(snap, /<btn [^>]*ctx="Red Mug \$9"[^>]*>Add to cart<\/btn>/);
+  assert.match(snap, /<btn [^>]*ctx="Blue Mug \$12"[^>]*>Add to cart<\/btn>/);
+  await call(c, 'browser_act', { find: 'Email address', action: 'fill', value: 'ada@example.com' });
+  await call(c, 'browser_act', { find: 'Plan', action: 'fill', value: 'Pro' });          // option text, not value
+  assert.equal(JSON.parse(await call(c, 'browser_execute_js', { code: 'document.getElementById("em").value+"|"+document.getElementById("pl").value' })), 'ada@example.com|Pro');
+  assert.match(await call(c, 'browser_act', { find: 'Plan', action: 'fill', value: 'Enterprise' }), /No option matches/);
+  await c.close();
+});
+
+test('automation: shadow DOM and same-origin iframes are visible and drivable', { skip }, async () => {
+  const c = await connect();
+  await grant(c, 'js_execute');
+  await grant(c, 'fill'); await grant(c, 'click');
+  await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/widgets` });
+  await call(c, 'browser_act', { find: 'Nick', action: 'fill', value: 'ada' });
+  await call(c, 'browser_act', { find: 'Save nick', action: 'click' });
+  await call(c, 'browser_act', { find: 'Frame button', action: 'click' });
+  assert.equal(JSON.parse(await call(c, 'browser_execute_js', { code: 'window.nick+"|"+window.framed' })), 'ada|1');
+  await c.close();
+});
+
+test('automation: a native dialog is reported, not hung on, and browser_dialog answers it', { skip }, async () => {
+  const c = await connect();
+  await grant(c, 'js_execute');
+  await grant(c, 'click');
+  await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/widgets` });
+  const out = await call(c, 'browser_act', { find: 'Delete', action: 'click' });
+  assert.match(out, /<dialog type="confirm" message="Really delete\?"/);
+  assert.match(await call(c, 'browser_snapshot'), /JavaScript dialog is open/);        // other tools say so instead of hanging
+  assert.match(await call(c, 'browser_dialog', { action: 'accept' }), /<dialog_closed type="confirm" action="accept"/);
+  assert.equal(JSON.parse(await call(c, 'browser_execute_js', { code: 'window.answer' })), true);
+  await c.close();
+});
+
+test('automation: hover opens a menu; stale eids after a re-render are relocated', { skip }, async () => {
+  const c = await connect();
+  await grant(c, 'js_execute');
+  await grant(c, 'click');
+  await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/widgets` });
+  assert.doesNotMatch(await call(c, 'browser_snapshot'), /Pricing/);
+  assert.match(await call(c, 'browser_hover', { selector: '#menu span' }), /Pricing/);
+  await call(c, 'browser_act', { find: 'Pricing', action: 'click' });
+  assert.equal(JSON.parse(await call(c, 'browser_execute_js', { code: 'window.picked' })), 1);
+  // re-render: replace the button nodes; the old eid must still reach "Add to cart" in the Blue Mug row
+  const snap = await call(c, 'browser_snapshot');
+  const blue = snap.match(/<btn eid="([^"]+)"[^>]*ctx="Blue Mug \$12"/)[1];
+  await call(c, 'browser_execute_js', { code: 'document.querySelectorAll(".item").forEach(d=>{d.innerHTML=d.innerHTML});document.querySelectorAll(".add").forEach(b=>b.onclick=function(){window.added=(window.added||[]).concat(b.parentElement.firstChild.textContent)})' });
+  await call(c, 'browser_click', { eid: blue });
+  assert.deepEqual(JSON.parse(await call(c, 'browser_execute_js', { code: 'window.added' })), ['Blue Mug $12']);
+  await c.close();
+});
+
+test('automation: file upload needs the file_upload permission, which is denied by default', { skip }, async () => {
+  const c = await connect();
+  await grant(c, 'js_execute');
+  await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/widgets` });
+  const f = path.join(os.tmpdir(), 'auren-e2e-upload.txt'); fs.writeFileSync(f, 'x');
+  assert.match(await call(c, 'browser_upload', { selector: '#file', files: [f] }), /permission|denied|not allowed/i);
+  assert.match(await call(c, 'browser_upload', { selector: '#file', files: ['relative.txt'] }), /permission|denied|absolute/i);
+  await grant(c, 'file_upload');
+  assert.match(await call(c, 'browser_upload', { selector: '#file', files: [f] }), /<uploaded count="1"/);
+  assert.equal(JSON.parse(await call(c, 'browser_execute_js', { code: 'window.fname' })), 'auren-e2e-upload.txt');
+  await c.close();
 });
 
 test('reports a structured offline error when Auren is unreachable', { skip }, async () => {

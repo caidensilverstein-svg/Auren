@@ -38,7 +38,7 @@ export async function startHarness(opts = {}) {
   }
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'autobench-home-')); tmp.push(home);
   fs.mkdirSync(path.join(home, '.auren'), { recursive: true });
-  fs.writeFileSync(path.join(home, '.auren', 'agent_permissions.json'), JSON.stringify({ version: 1, trust_level: 'trusted', rules: { read: 'allow', navigation: 'allow', click: 'allow', fill: 'allow', js_execute: 'allow', form_submit: 'allow', sensitive_input: 'allow' } }));
+  fs.writeFileSync(path.join(home, '.auren', 'agent_permissions.json'), JSON.stringify({ version: 1, trust_level: 'trusted', rules: { read: 'allow', navigation: 'allow', click: 'allow', fill: 'allow', js_execute: 'allow', form_submit: 'allow', sensitive_input: 'allow', file_upload: 'allow' } }));
   const mcpPort = await free();
   procs.push(spawn(process.execPath, [path.join(here, '..', '..', 'index.js')], {
     env: { ...process.env, HOME: home, AUREN_MCP_PORT: String(mcpPort), AUREN_CDP_HOST: cdpHost, AUREN_CDP_PORT: String(cdpPort), AUREN_MCP_KEY: KEY, AUREN_HISTORY: 'off' }, stdio: 'ignore' }));
@@ -63,7 +63,8 @@ export async function startHarness(opts = {}) {
   // One clean tab per attempt: a task that leaves a native dialog or popups open cannot poison the next one.
   const newTab = async () => {
     const old = (await cdpList()).filter(t => t.type === 'page');
-    await fetch(`http://${cdpHost}:${cdpPort}/json/new?about:blank`, { method: 'PUT' });
+    const created = await (await fetch(`http://${cdpHost}:${cdpPort}/json/new?about:blank`, { method: 'PUT' })).json();
+    await fetch(`http://${cdpHost}:${cdpPort}/json/activate/${created.id}`).catch(() => {});   // hidden tabs auto-dismiss dialogs
     for (const t of old) await fetch(`http://${cdpHost}:${cdpPort}/json/close/${t.id}`).catch(() => {});
     await new Promise(r => setTimeout(r, 1150)); // the MCP server caches the default tab id for 1 s
   };

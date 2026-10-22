@@ -149,7 +149,7 @@ export const TASKS = [
     async run(A) {
       await A.go(A.url('feed'));
       let found = '';
-      for (let i = 0; i < 12 && !has(found, /Post 47</); i++) {
+      for (let i = 0; i < 12 && !has(found, /<lnk[^>]*>Post 47</); i++) {
         await A.call('browser_scroll', { direction: 'bottom' });
         found = await A.call('browser_find', { query: 'Post 47' });
       }

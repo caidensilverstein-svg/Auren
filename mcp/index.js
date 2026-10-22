@@ -72,8 +72,8 @@ const sessionGrants = new Map(); // action -> { level, expires }
 const pendingRequests = new Map(); // id -> { id, action, reason, requested_at }
 const DEFAULT_GRANT_MINUTES = 60;
 const MAX_PENDING = 50;
-const ACTIONS = ['fill', 'click', 'js_execute', 'form_submit', 'navigation', 'read', 'sensitive_input'];
-const DENY_BY_DEFAULT = new Set(['sensitive_input']); // password / card / one-time-code fields
+const ACTIONS = ['fill', 'click', 'js_execute', 'form_submit', 'navigation', 'read', 'sensitive_input', 'file_upload'];
+const DENY_BY_DEFAULT = new Set(['sensitive_input', 'file_upload']); // password / card fields; sending local files to a site
 
 function checkPermission(action) {
   const p = loadPerms();
@@ -133,7 +133,7 @@ function auditWrite(entry) {
 // Circuit breaker: a runaway or hijacked agent cannot fire unlimited state-changing actions.
 const MAX_ACTIONS_PER_MIN = Number(process.env.AUREN_MAX_ACTIONS_PER_MIN) || 120;
 const actionTimes = [];
-const STATE_CHANGING = new Set(['browser_click', 'browser_fill', 'browser_navigate', 'browser_execute_js', 'browser_act', 'browser_exec', 'browser_set_preference']);
+const STATE_CHANGING = new Set(['browser_click', 'browser_fill', 'browser_navigate', 'browser_execute_js', 'browser_act', 'browser_exec', 'browser_set_preference', 'browser_hover', 'browser_dialog', 'browser_upload']);
 function rateLimited(weight) {
   const now = Date.now();
   while (actionTimes.length && now - actionTimes[0] > 60_000) actionTimes.shift();
@@ -222,9 +222,35 @@ const tabState = new Map();
 
 function getTabState(tabId) {
   if (!tabState.has(tabId)) {
-    tabState.set(tabId, { step: 0, url: '', lastFPs: new Map() });
+    tabState.set(tabId, { step: 0, url: '', lastFPs: new Map(), meta: new Map(), eidFrame: new Map() });
   }
   return tabState.get(tabId);
+}
+
+
+
+// Evaluate in the frame that owns `raw` (a cross-origin iframe has its own session), else in the main page.
+function evalEid(client, target, raw, params) {
+  const sid = getTabState(target.id).eidFrame.get(raw);
+  return sid ? client.send('Runtime.evaluate', params, sid) : client.Runtime.evaluate(params);
+}
+// Top-left of an OOPIF's content box in the main page's viewport, so frame-local coordinates can be clicked.
+async function frameOrigin(client, target, sid) {
+  const f = [...(sessionOf(target)?.frames.values() || [])].find(x => x.sessionId === sid);
+  if (!f) throw new Error('The iframe is gone; take a new snapshot');
+  const st = sessionOf(target);
+  if (!st.domEnabled) { await client.DOM.enable(); st.domEnabled = true; }
+  const { backendNodeId } = await client.DOM.getFrameOwner({ frameId: f.targetId });
+  await client.DOM.scrollIntoViewIfNeeded({ backendNodeId }).catch(() => {});
+  const { quads } = await client.DOM.getContentQuads({ backendNodeId });
+  return { x: quads[0][0], y: quads[0][1] };
+}
+
+// An element reference for page-side code: the eid's element, or (after a re-render) the unique element that matches
+// what the eid used to be.
+function eidExpr(target, raw) {
+  const meta = getTabState(target.id).meta.get(raw);
+  return `(__L.byEid(${JSON.stringify(raw)})||__L.relocate(${JSON.stringify(meta || null)}))`;
 }
 
 // --- CDP helpers ---
@@ -357,7 +383,20 @@ class SessionManager {
     // auto-evict on disconnect so a dropped socket does not linger in the pool
     client.on('disconnect', () => this._sessions.delete(target.id));
 
-    const session = { client, target, lastUsed: Date.now() };
+    const session = { client, target, lastUsed: Date.now(), dialog: null, popups: [], frames: new Map() };
+    // Cross-origin iframes live in their own renderer process and are separate CDP targets. Attach to them (flat
+    // sessions over this same socket) so snapshots, find and act can see and drive their content.
+    client.on('Target.attachedToTarget', (p) => {
+      if (p.targetInfo?.type === 'iframe') session.frames.set(p.sessionId, { sessionId: p.sessionId, targetId: p.targetInfo.targetId, url: p.targetInfo.url });
+    });
+    client.on('Target.detachedFromTarget', (p) => { session.frames.delete(p.sessionId); });
+    client.on('Target.targetInfoChanged', (p) => { const f = session.frames.get(p.targetInfo?.sessionId); if (f) f.url = p.targetInfo.url; });
+    await client.Target.setAutoAttach({ autoAttach: true, waitForDebuggerOnStart: false, flatten: true }).catch(() => {});
+    // A native dialog blocks the page; remember it so tools can say so instead of hanging. window.open / target=_blank
+    // popups are remembered so the action that caused them can report the new tab.
+    client.Page.on('javascriptDialogOpening', (p) => { session.dialog = { type: p.type, message: p.message, defaultPrompt: p.defaultPrompt }; });
+    client.Page.on('javascriptDialogClosed', () => { session.dialog = null; });
+    client.Page.on('windowOpen', (p) => { session.popups.push({ url: p.url, name: p.windowName, at: Date.now() }); if (session.popups.length > 20) session.popups.shift(); });
     this._sessions.set(target.id, session);
     return session;
   }
@@ -400,11 +439,14 @@ class SessionManager {
 }
 
 const sessions = new SessionManager();
-async function withCDP(tabId, fn) {
+async function withCDP(tabId, fn, opts = {}) {
   const session = await sessions.acquire(tabId ?? null);
   session.lastUsed = Date.now();
+  if (session.dialog && !opts.allowDialog) {
+    throw new Error(`A JavaScript dialog is open on this tab (${session.dialog.type}: "${String(session.dialog.message).slice(0, 120)}"). Call browser_dialog with action accept or dismiss first.`);
+  }
   try {
-    return await fn(session.client, session.target);
+    return await fn(session.client, session.target, session);
   } catch (e) {
     // Session may be stale/broken after this error, so drop it here rather
     // than reuse a possibly-dead connection on the next call.
@@ -470,6 +512,7 @@ function buildXml(data, state, isDiff) {
       regionBody.push(line);
       budget -= line.length + 1;
       added++;
+      state.meta.set(item.attrs.eid, { kind: item.kind, text: item.text, ctx: item.attrs.ctx || '' });
       const fp = `${item.kind}|${item.text}|${item.attrs.href || ''}`;
       newFPs.set(fp, { eid: item.attrs.eid, kind: item.kind, text: item.text, val: item.attrs.val });
     }
@@ -570,6 +613,24 @@ async function takeSnapshot(client, resolvedTabId, opts = {}) {
   const data = JSON.parse(raw);
   if (data.info) { const b = domainBlocks(data.info.url, 'read'); if (b) return `<permission_denied>${escapeXml(b.reason)}</permission_denied>`; }
   if (typeof data.nextN === 'number') eidCounter = data.nextN;
+  // elements inside cross-origin iframes (separate processes) are added as one region per frame
+  state.eidFrame.clear();
+  const owner = sessions._sessions.get(resolvedTabId);
+  if (owner?.frames.size && !region) {
+    for (const fr of owner.frames.values()) {
+      try {
+        const rr = await client.send('Runtime.evaluate', { expression: snapshotJs(mode, null, maxItems, null), returnByValue: true, awaitPromise: true }, fr.sessionId);
+        const d = JSON.parse(rr?.result?.value || '{}');
+        if (!d.regions) continue;
+        if (typeof d.nextN === 'number') eidCounter = d.nextN;
+        const items = d.regions.flatMap(x => x.items);
+        for (const it of items) state.eidFrame.set(it.attrs.eid, fr.sessionId);
+        let host = ''; try { host = new URL(fr.url).host; } catch { /* about:blank etc. */ }
+        if (items.length) data.regions.push({ name: `frame ${host}`, items, more: 0 });
+        data.hidden = (data.hidden || 0) + (d.hidden || 0);
+      } catch { /* frame navigated away or detached */ }
+    }
+  }
   // when the caller knows the URL from before the action, decide diff-vs-baseline from the
   // snapshot itself instead of paying another round trip to ask the page for location.href
   const navigated = prevUrl !== undefined && data.info ? data.info.url !== prevUrl : undefined;
@@ -659,48 +720,117 @@ async function actNavigate(client, target, url, snap = null) {
   return {};
 }
 
+// A native alert/confirm/prompt blocks the page's main thread, so the click that opened it never acknowledges. Race the
+// pending work against the dialog event and return control with the dialog described, instead of hanging.
+function raceDialog(client, work) {
+  const w = watch(client, 'Page.javascriptDialogOpening', 120000);
+  return Promise.race([work.then(() => 'done'), w.promise.then(v => (v ? 'dialog' : 'timeout'))]).finally(() => w.cancel());
+}
+function dialogXml(session) {
+  const d = session?.dialog;
+  return d ? `<dialog type="${escapeXml(d.type)}" message="${escapeXml(String(d.message).slice(0, 300))}"${d.defaultPrompt ? ` default="${escapeXml(d.defaultPrompt)}"` : ''}>A JavaScript dialog is open and blocks the page. Call browser_dialog with action accept or dismiss.</dialog>` : '';
+}
+// Popups opened by the action (window.open, target=_blank) since `since`: report their tab ids.
+async function popupXml(session, since) {
+  const fresh = (session?.popups || []).filter(p => p.at >= since);
+  if (!fresh.length) return '';
+  let tabs = [];
+  try { tabs = (await CDP.List(MAC_CDP)).filter(t => t.type === 'page'); } catch { /* best effort */ }
+  const lines = fresh.map(p => {
+    const t = tabs.find(x => x.url === p.url) || tabs.find(x => x.url.startsWith(p.url));
+    return `<new_tab${t ? ` id="${escapeXml(t.id)}"` : ''} url="${escapeXml(String(p.url).slice(0, 200))}">Opened by the last action; pass tab_id to act on it, or browser_select_tab to switch.</new_tab>`;
+  });
+  return '\n' + lines.join('\n');
+}
+const sessionOf = (target) => sessions._sessions.get(target.id);
+
 async function actClick(client, target, raw, snap = null) {
   const isEid = EID_RE.test(raw);
-  const elResult = await client.Runtime.evaluate({
+  const session = sessionOf(target);
+  const fsid = isEid ? getTabState(target.id).eidFrame.get(raw) : null;
+  const elResult = await evalEid(client, target, raw, {
     expression: `(function(){${PAGE_LIB}
-      const el=${isEid ? `__L.byEid(${JSON.stringify(raw)})` : `__L.deepQuery(${JSON.stringify(raw)},1)[0]`};
+      const el=${isEid ? eidExpr(target, raw) : `__L.deepQuery(${JSON.stringify(raw)},1)[0]`};
       if(!el)return null;
       const c=__L.center(el);
       const f=el.closest('form');const ty=(el.getAttribute('type')||'').toLowerCase();const tg=el.tagName.toLowerCase();
       const submits=!!f&&((tg==='button'&&(ty===''||ty==='submit'))||(tg==='input'&&(ty==='submit'||ty==='image')));
-      return JSON.stringify({x:c.x,y:c.y,tag:el.tagName.toLowerCase(),href:el.href||'',target:el.getAttribute('target')||'',url:location.href,submits});
+      const a=el.closest('a[href]');
+      const covered=(()=>{try{if(el.ownerDocument!==document)return'';let top=document.elementFromPoint(c.x,c.y);while(top&&top.shadowRoot&&top.shadowRoot.elementFromPoint){const inner=top.shadowRoot.elementFromPoint(c.x,c.y);if(!inner||inner===top)break;top=inner;}
+        if(!top)return'';for(let e=el;e;e=__L.parentOf(e))if(e===top)return'';for(let e=top;e;e=__L.parentOf(e))if(e===el)return'';
+        return top.tagName.toLowerCase()+(top.id?'#'+top.id:'')+' "'+(top.innerText||'').trim().slice(0,40)+'"';}catch(e){return''}})();
+      return JSON.stringify({x:c.x,y:c.y,tag:el.tagName.toLowerCase(),href:a?a.href:'',target:a?(a.getAttribute('target')||''):'',url:location.href,submits,covered});
     })()`,
     returnByValue: true
   });
   if (!elResult?.result?.value) return { error: `Element not found: ${raw}` };
   const el = JSON.parse(elResult.result.value);
+  if (fsid) { const o = await frameOrigin(client, target, fsid); el.x += o.x; el.y += o.y; }
   { const b = domainBlocks(el.url, 'write'); if (b) return { denied: b }; }
   if (el.submits) { const p = checkPermission('form_submit'); if (!p.allowed) return { denied: p }; }
-  if (el.href && el.tag === 'a' && /^https?:/i.test(el.href)) { const b = domainBlocks(el.href, 'read'); if (b) return { denied: b }; }
+  if (el.href && /^https?:/i.test(el.href)) { const b = domainBlocks(el.href, 'read'); if (b) return { denied: b }; }
+  const startedAt = Date.now();
   const ctx = { ...watchNav(client), prevUrl: el.url };
+  // A plain link to another document is opened directly (deterministic, one round trip). Fragment-only links never fire
+  // a load event, links with a target open a popup, and links with handlers may preventDefault: those get a real click.
+  const sameDoc = el.href && el.href.split('#')[0] === el.url.split('#')[0];
+  const direct = el.tag === 'a' && el.href && /^https?:/i.test(el.href) && !sameDoc && (!el.target || el.target === '_self');
   try {
-    if (el.href && el.tag === 'a' && /^https?:/i.test(el.href)) {
+    if (direct) {
       await client.Page.navigate({ url: el.href });
       await ctx.loadW.promise;
       ctx.navW.fired = true;
     } else {
       // Real pointer events only (a JS .click() followed by a mouse click would activate
       // toggles/checkboxes twice and undo them). Press and release are pipelined: one round trip.
-      await Promise.all([
+      const work = Promise.all([
+        client.Input.dispatchMouseEvent({ type: 'mouseMoved', x: el.x, y: el.y }),
         client.Input.dispatchMouseEvent({ type: 'mousePressed', x: el.x, y: el.y, button: 'left', clickCount: 1 }),
         client.Input.dispatchMouseEvent({ type: 'mouseReleased', x: el.x, y: el.y, button: 'left', clickCount: 1 }),
       ]);
+      if ((await raceDialog(client, work)) === 'dialog') {
+        ctx.cancel();
+        return { xml: dialogXml(session) };
+      }
     }
   } catch (e) { ctx.cancel(); throw e; }
-  return afterAction(client, target, ctx, snap);
+  const r = await afterAction(client, target, ctx, snap);
+  const extra = await popupXml(session, startedAt);
+  const warn = el.covered ? `\n<note covered_by="${escapeXml(el.covered)}">The click landed on another element covering the target; dismiss the overlay first if nothing happened.</note>` : '';
+  if (r?.xml !== undefined && (extra || warn)) r.xml += warn + extra;
+  return r;
+}
+
+async function actHover(client, target, raw, snap = null) {
+  const isEid = EID_RE.test(raw);
+  const hsid = isEid ? getTabState(target.id).eidFrame.get(raw) : null;
+  const r = await evalEid(client, target, raw, {
+    expression: `(function(){${PAGE_LIB}
+      const el=${isEid ? eidExpr(target, raw) : `__L.deepQuery(${JSON.stringify(raw)},1)[0]`};
+      if(!el)return null;
+      const c=__L.center(el);
+      return JSON.stringify({x:c.x,y:c.y,url:location.href});
+    })()`,
+    returnByValue: true
+  });
+  if (!r?.result?.value) return { error: `Element not found: ${raw}` };
+  const el = JSON.parse(r.result.value);
+  if (hsid) { const o = await frameOrigin(client, target, hsid); el.x += o.x; el.y += o.y; }
+  { const b = domainBlocks(el.url, 'read'); if (b) return { denied: b }; }
+  // two moves: the first places the pointer, the second guarantees mouseenter/mouseover on the final target
+  await client.Input.dispatchMouseEvent({ type: 'mouseMoved', x: Math.max(1, el.x - 3), y: Math.max(1, el.y - 3) });
+  await client.Input.dispatchMouseEvent({ type: 'mouseMoved', x: el.x, y: el.y });
+  await settle(client, 60, 400);
+  if (snap) return { xml: await takeSnapshot(client, target.id, snap) };
+  return {};
 }
 
 async function actFill(client, target, raw, value, snap = null) {
   const allowSensitive = checkPermission('sensitive_input').allowed;
   const isEid = EID_RE.test(raw);
-  const r = await client.Runtime.evaluate({
+  const r = await evalEid(client, target, raw, {
     expression: `(function(){${PAGE_LIB}
-      const el=${isEid ? `__L.byEid(${JSON.stringify(raw)})` : `__L.deepQuery(${JSON.stringify(raw)},1)[0]`};
+      const el=${isEid ? eidExpr(target, raw) : `__L.deepQuery(${JSON.stringify(raw)},1)[0]`};
       if(!el)return'Not found';
       const ty=(el.getAttribute('type')||'').toLowerCase();const ac=(el.getAttribute('autocomplete')||'').toLowerCase();
       const nm=((el.getAttribute('name')||'')+' '+(el.id||'')).toLowerCase();
@@ -896,15 +1026,29 @@ function buildServer() {
     const items=hits.map(h=>{const it=__L.info(h.el);const eid=it.kind+'-'+(++n);h.el.setAttribute('data-eid',eid);it.attrs.eid=eid;it.score=h.score;const c=__L.context(h.el,it.text);if(c)it.attrs.ctx=c;return it;});
     return JSON.stringify({items,nextN:n,tie:hits.length>1&&hits[1].score===hits[0].score});
   })()`;
-  async function resolveQuery(client, q, limit, interactiveOnly) {
-    let r = await client.Runtime.evaluate({ expression: resolveJs(q, limit, interactiveOnly), returnByValue: true });
-    let found = JSON.parse(r?.result?.value || '{"items":[]}');
-    if (!found.items.length && interactiveOnly) {
-      r = await client.Runtime.evaluate({ expression: resolveJs(q, limit, false), returnByValue: true });
-      found = JSON.parse(r?.result?.value || '{"items":[]}');
+  async function resolveQuery(client, target, q, limit, interactiveOnly) {
+    const session = sessionOf(target), state = getTabState(target.id);
+    const run = async (inter, sid) => {
+      const params = { expression: resolveJs(q, limit, inter), returnByValue: true };
+      const r = sid ? await client.send('Runtime.evaluate', params, sid).catch(() => null) : await client.Runtime.evaluate(params);
+      const f = JSON.parse(r?.result?.value || '{"items":[]}');
+      if (typeof f.nextN === 'number') eidCounter = f.nextN;
+      return f;
+    };
+    for (const inter of interactiveOnly ? [true, false] : [false]) {
+      let found = await run(inter, null);
+      if (!found.items.length && session?.frames.size) {
+        for (const fr of session.frames.values()) {
+          const ff = await run(inter, fr.sessionId);
+          if (ff.items.length) { found = ff; for (const it of ff.items) state.eidFrame.set(it.attrs.eid, fr.sessionId); break; }
+        }
+      }
+      if (found.items.length) {
+        for (const it of found.items) state.meta.set(it.attrs.eid, { kind: it.kind, text: it.text, ctx: it.attrs.ctx || '' });
+        return found;
+      }
     }
-    if (typeof found.nextN === 'number') eidCounter = found.nextN;
-    return found;
+    return { items: [] };
   }
   const ambiguityNote = (q, found) => found.tie
     ? `\n<note ambiguous="${found.items.length}">"${escapeXml(q)}" matched several elements equally well; acted on ${escapeXml(found.items[0].attrs.eid)}. Others: ${found.items.slice(1).map(i => `${i.attrs.eid}${i.attrs.ctx ? ` (${escapeXml(i.attrs.ctx)})` : ''}`).join(', ')}. Use browser_find, then an eid.</note>`
@@ -925,12 +1069,12 @@ function buildServer() {
         if (!perm.allowed) return { content: [{ type: 'text', text: `<permission_denied>${perm.reason}</permission_denied>` }] };
       }
       return await withCDP(tab_id, async (client, target) => {
-        const found = await resolveQuery(client, find, 3, action !== 'read');
+        const found = await resolveQuery(client, target, find, 3, action !== 'read');
         if (!found.items.length) return { content: [{ type: 'text', text: `<error>browser_act: element not found: ${escapeXml(find)}</error>` }] };
         const top = found.items[0].attrs.eid;
         const note = ambiguityNote(find, found);
         if (action === 'read') {
-          const r = await client.Runtime.evaluate({ expression: `(function(){${PAGE_LIB}const el=__L.byEid(${JSON.stringify(top)});return el?__L.textOf(el).slice(0,2000):'[not found]';})()`, returnByValue: true });
+          const r = await evalEid(client, target, top, { expression: `(function(){${PAGE_LIB}const el=__L.byEid(${JSON.stringify(top)});return el?__L.textOf(el).slice(0,2000):'[not found]';})()`, returnByValue: true });
           return { content: [{ type: 'text', text: (r?.result?.value ?? '[no content]') + note }] };
         }
         if (action === 'fill') {
@@ -957,8 +1101,8 @@ function buildServer() {
     try {
       const perm = checkPermission('read');
       if (!perm.allowed) return denied(perm);
-      return await withCDP(tab_id, async (client) => {
-        const found = await resolveQuery(client, query, 5, true);
+      return await withCDP(tab_id, async (client, target) => {
+        const found = await resolveQuery(client, target, query, 5, true);
         if (!found.items.length) {
           return { content: [{ type: 'text', text: `<results count="0">No elements matching: ${escapeXml(query)}</results>` }] };
         }
@@ -1079,7 +1223,7 @@ function buildServer() {
 `<permission_denied>${perm.reason}</permission_denied>` }] };
       return await withCDP(tab_id, async (client) => {
         const r = await client.Runtime.evaluate({ expression: code, returnByValue: true, awaitPromise: true });
-        return { content: [{ type: 'text', text: JSON.stringify(r.result.value ?? r.result.description) }] };
+        return { content: [{ type: 'text', text: JSON.stringify(r.result.value ?? r.result.description) ?? 'undefined' }] };
       });
     } catch (e) {
       return { content: [{ type: 'text', text: `<error tool="browser_execute_js">${escapeXml(e.message)}</error>` }] };
@@ -1118,10 +1262,10 @@ function buildServer() {
   });
 
   server.registerTool('browser_exec', {
-    description: 'Run a sequence of browser steps in ONE call (one round trip instead of one per step). steps: array (max 25) of {op, ...}. ops: navigate{url} | click{eid|selector} | fill{eid|selector,value} | press{key: Enter|Tab|Escape|Backspace|Arrow*|Space} | scroll{direction,pixels} | wait_for{selector|text,timeout_ms} | read{region,max_chars} | snapshot{mode,region,max_items} | js{code}. Stops at the first failing step. Each step is permission-checked like its single-step tool. Returns a per-step summary plus the output of read/snapshot/js steps and, unless the last step already returns a view, a final interactive snapshot.',
+    description: 'Run a sequence of browser steps in ONE call (one round trip instead of one per step). steps: array (max 25) of {op, ...}. ops: navigate{url} | click{eid|selector} | hover{eid|selector} | fill{eid|selector,value} | press{key: Enter|Tab|Escape|Backspace|Arrow*|Space} | scroll{direction,pixels} | wait_for{selector|text,timeout_ms} | read{region,max_chars} | snapshot{mode,region,max_items} | js{code}. Stops at the first failing step. Each step is permission-checked like its single-step tool. Returns a per-step summary plus the output of read/snapshot/js steps and, unless the last step already returns a view, a final interactive snapshot.',
     inputSchema: {
       steps: z.array(z.object({
-        op: z.enum(['navigate', 'click', 'fill', 'press', 'scroll', 'wait_for', 'read', 'snapshot', 'js']),
+        op: z.enum(['navigate', 'click', 'hover', 'fill', 'press', 'scroll', 'wait_for', 'read', 'snapshot', 'js']),
         url: z.string().optional(), eid: z.string().optional(), selector: z.string().optional(), value: z.string().optional(),
         key: z.string().optional(), direction: z.enum(['up', 'down', 'top', 'bottom']).optional(), pixels: z.number().optional(),
         text: z.string().optional(), timeout_ms: z.number().optional(), region: z.string().optional(), max_chars: z.number().optional(),
@@ -1131,7 +1275,7 @@ function buildServer() {
       final_snapshot: z.boolean().default(true),
     }
   }, async ({ steps, tab_id, final_snapshot }) => {
-    const NEED = { navigate: 'navigation', click: 'click', fill: 'fill', press: 'fill', scroll: 'read', wait_for: 'read', read: 'read', snapshot: 'read', js: 'js_execute' };
+    const NEED = { navigate: 'navigation', click: 'click', hover: 'click', fill: 'fill', press: 'fill', scroll: 'read', wait_for: 'read', read: 'read', snapshot: 'read', js: 'js_execute' };
     try {
       return await withCDP(tab_id, async (client, target) => {
         const out = []; let completed = 0; let failed = null; let lastView = false; let navigatedSinceView = false;
@@ -1149,6 +1293,8 @@ function buildServer() {
                 else { const r = await actNavigate(client, target, st.url); err = r.error ?? r.denied?.reason ?? null; navigatedSinceView = true; }
               } else if (st.op === 'click') {
                 if (!raw) err = 'Provide eid or selector'; else { const r = await actClick(client, target, raw); err = r.error ?? r.denied?.reason ?? null; if (r.didNavigate) navigatedSinceView = true; }
+              } else if (st.op === 'hover') {
+                if (!raw) err = 'Provide eid or selector'; else { const r = await actHover(client, target, raw); err = r.error ?? r.denied?.reason ?? null; }
               } else if (st.op === 'fill') {
                 if (!raw) err = 'Provide eid or selector'; else if (st.value === undefined) err = 'fill requires value'; else { const r = await actFill(client, target, raw, st.value); err = r.error ?? r.denied?.reason ?? null; }
               } else if (st.op === 'press') {
@@ -1166,7 +1312,7 @@ function buildServer() {
                 body = await takeSnapshot(client, target.id, { mode: st.mode ?? 'interactive', region: st.region ?? null, maxItems: st.max_items, isDiff: false }); lastView = true; navigatedSinceView = false;
               } else if (st.op === 'js') {
                 const r = await client.Runtime.evaluate({ expression: st.code ?? '', returnByValue: true, awaitPromise: true });
-                body = JSON.stringify(r.result?.value ?? r.result?.description ?? null); lastView = true;
+                body = JSON.stringify(r.result?.value ?? r.result?.description ?? null) ?? 'undefined'; lastView = true;
               }
             } catch (e) { err = e.message; }
           }
@@ -1183,6 +1329,75 @@ function buildServer() {
       });
     } catch (e) {
       return errXml('browser_exec', e.message);
+    }
+  });
+
+  server.registerTool('browser_hover', {
+    description: 'Move the pointer over an element by eid or CSS selector, to open hover menus and tooltips. Returns a snapshot diff showing what appeared.',
+    inputSchema: { eid: z.string().optional(), selector: z.string().optional(), tab_id: z.string().optional() }
+  }, async ({ eid, selector, tab_id }) => {
+    try {
+      const perm = checkPermission('click');
+      if (!perm.allowed) return denied(perm);
+      return await withCDP(tab_id, async (client, target) => {
+        const raw = eid || selector;
+        if (!raw) return errXml('browser_hover', 'Provide eid or selector');
+        const r = await actHover(client, target, raw, { mode: 'interactive', isDiff: true });
+        if (r.denied) return denied(r.denied);
+        if (r.error) return errXml('browser_hover', r.error);
+        return { content: [{ type: 'text', text: r.xml }] };
+      });
+    } catch (e) {
+      return errXml('browser_hover', e.message);
+    }
+  });
+
+  server.registerTool('browser_dialog', {
+    description: 'Answer a native JavaScript dialog (alert, confirm, prompt, beforeunload) that a click opened and that is blocking the page. action: accept or dismiss; text answers a prompt. Any other tool reports the open dialog until it is answered.',
+    inputSchema: { action: z.enum(['accept', 'dismiss']), text: z.string().optional(), tab_id: z.string().optional() }
+  }, async ({ action, text, tab_id }) => {
+    try {
+      const perm = checkPermission('click');
+      if (!perm.allowed) return denied(perm);
+      return await withCDP(tab_id, async (client, target, session) => {
+        if (!session.dialog) return errXml('browser_dialog', 'No JavaScript dialog is open on this tab');
+        const had = session.dialog;
+        await client.Page.handleJavaScriptDialog({ accept: action === 'accept', ...(text !== undefined ? { promptText: text } : {}) });
+        session.dialog = null;
+        await settle(client, 40, 300);
+        const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: true });
+        return { content: [{ type: 'text', text: `<dialog_closed type="${escapeXml(had.type)}" action="${action}" />\n${xml}` }] };
+      }, { allowDialog: true });
+    } catch (e) {
+      return errXml('browser_dialog', e.message);
+    }
+  });
+
+  server.registerTool('browser_upload', {
+    description: 'Attach local files to an <input type=file> (by eid or CSS selector). The paths are on the machine running the browser. Requires the file_upload permission, which is denied until the user allows it (auren-perm set file_upload allow).',
+    inputSchema: { eid: z.string().optional(), selector: z.string().optional(), files: z.array(z.string()).min(1).max(10), tab_id: z.string().optional() }
+  }, async ({ eid, selector, files, tab_id }) => {
+    try {
+      const perm = checkPermission('file_upload');
+      if (!perm.allowed) return denied(perm);
+      for (const f of files) if (!path.isAbsolute(f)) return errXml('browser_upload', `Use absolute paths: ${f}`);
+      return await withCDP(tab_id, async (client, target) => {
+        const raw = eid || selector;
+        if (!raw) return errXml('browser_upload', 'Provide eid or selector');
+        const isEid = EID_RE.test(raw);
+        const r = await client.Runtime.evaluate({ expression: `(function(){${PAGE_LIB}
+          const el=${isEid ? eidExpr(target, raw) : `__L.deepQuery(${JSON.stringify(raw)},1)[0]`};
+          return el&&el.tagName==='INPUT'&&el.type==='file'?el:null;})()` });
+        if (!r?.result?.objectId) return errXml('browser_upload', `No file input found: ${raw}`);
+        const url = await liveUrl(client);
+        { const b = domainBlocks(url, 'write'); if (b) return denied(b); }
+        await client.DOM.setFileInputFiles({ files, objectId: r.result.objectId });
+        await settle(client, 40, 300);
+        const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: true });
+        return { content: [{ type: 'text', text: `<uploaded count="${files.length}" />\n${xml}` }] };
+      });
+    } catch (e) {
+      return errXml('browser_upload', e.message);
     }
   });
 

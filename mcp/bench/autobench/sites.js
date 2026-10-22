@@ -68,7 +68,7 @@ export function makeSites(port) {
   S.pay = () => shell('Pay', `<button id="pay" onclick="${report('T08')}">Pay now</button>`);
 
   S.overlays = () => shell('Overlays', `<div id="banner" style="position:fixed;bottom:0;left:0;right:0;background:#eee;padding:12px">We use cookies. <button id="acc" onclick="banner.remove()">Accept all</button></div>
-    <h1>Account settings</h1><button id="del" onclick="if(confirm('Delete everything?')){${report('T09', 'document.getElementById("banner")===null')};document.title='deleted'}">Delete account</button>`);
+    <h1>Account settings</h1><button id="del" onclick="if(confirm('Delete everything?')){${report('T09', "!document.getElementById('banner')")};document.title='deleted'}">Delete account</button>`);
 
   S.feed = () => shell('Feed', `<h1>Feed</h1><div id="f"></div><div id="end" style="height:10px"></div>
     <script>let n=0;function more(){for(let i=0;i<10;i++){n++;const d=document.createElement('div');d.className='row';const a=document.createElement('a');a.href='#';a.dataset.n=n;a.textContent='Post '+n;
