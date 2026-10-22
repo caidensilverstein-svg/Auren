@@ -59,15 +59,19 @@ if (torTab) {
   // Navigate once and wait for the page to really be check.torproject.org: before Tor has bootstrapped the navigation just pends, and a
   // fetch run from the still-visible new-tab WebUI page is blocked by its CSP (which says nothing about Tor). Re-issue the navigation
   // every 30 s in case the first attempt failed on a circuit that was not ready.
-  let lastNav = 0;
+  let lastNav = 0, diag = null;
+  const API = 'https://check.torproject.org/api/ip';
   while (Date.now() - b0 < waitS * 1000) {
-    if (Date.now() - lastNav > 30000) { await tc.send('Page.navigate', { url: 'https://check.torproject.org/' }).catch(() => {}); lastNav = Date.now(); }
+    if (Date.now() - lastNav > 30000) { await tc.send('Page.navigate', { url: API }).catch(() => {}); lastNav = Date.now(); }
     await sleep(3000);
-    const href = await evalIn(tc, 'location.href', 8000).catch(() => '');
-    if (!/^https:\/\/check\.torproject\.org/.test(href)) continue;
-    ans = await fetchIp(tc);
+    const probe = await evalIn(tc, 'JSON.stringify({href: location.href, title: document.title, body: (document.body && document.body.innerText || "").slice(0, 200)})', 8000).catch(() => null);
+    if (!probe) continue;
+    diag = JSON.parse(probe);
+    if (!diag.href.startsWith(API)) continue;
+    try { ans = JSON.parse(diag.body); } catch { continue; }
     if (ans && ans.IsTor !== undefined) break;
   }
+  if (!(ans && ans.IsTor !== undefined)) log('Tor window: last page seen', diag || { none: true });
   log('Tor window: check.torproject.org', { ...ans, seconds_to_answer: Math.round((Date.now() - b0) / 1000) });
   out.isTor = ans?.IsTor === true;
   out.control_isTor = control?.IsTor === true;
