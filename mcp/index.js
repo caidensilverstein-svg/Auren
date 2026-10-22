@@ -8,6 +8,8 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import Database from 'better-sqlite3';
+import { PAGE_LIB } from './lib/pagelib.js';
+import { TokenStore, scopeAllows } from './lib/auth.js';
 
 (function loadEnv() {
   try {
@@ -42,6 +44,15 @@ function keyMatches(candidate) {
   return crypto.timingSafeEqual(a, b);
 }
 
+// Agent tokens (docs/design/user-auth.md): hashed at rest, scoped, revocable. The shared AUREN_MCP_KEY keeps working
+// during migration and maps to user 'owner' with scope AUREN_LEGACY_SCOPE (default 'settings' = everything it could do
+// before; set it to 'act' to stop a leaked legacy key from filing permission/preference requests).
+const AUTH_DB_PATH = process.env.AUREN_AUTH_DB || path.join(os.homedir(), '.auren', 'auth.db');
+fs.mkdirSync(path.dirname(AUTH_DB_PATH), { recursive: true, mode: 0o700 });
+const tokens = new TokenStore(new Database(AUTH_DB_PATH));
+try { fs.chmodSync(AUTH_DB_PATH, 0o600); } catch { /* best effort */ }
+const LEGACY_AUTH = { user_id: 'owner', token_id: 'legacy', scope: ['read', 'act', 'settings'].includes(process.env.AUREN_LEGACY_SCOPE) ? process.env.AUREN_LEGACY_SCOPE : 'settings' };
+
 // --- Negotiated AI permissions (#10) ---
 const PERMS_PATH = path.join(os.homedir(), '.auren', 'agent_permissions.json');
 const DEFAULT_PERMS = {
@@ -71,8 +82,8 @@ const sessionGrants = new Map(); // action -> { level, expires }
 const pendingRequests = new Map(); // id -> { id, action, reason, requested_at }
 const DEFAULT_GRANT_MINUTES = 60;
 const MAX_PENDING = 50;
-const ACTIONS = ['fill', 'click', 'js_execute', 'form_submit', 'navigation', 'read', 'sensitive_input'];
-const DENY_BY_DEFAULT = new Set(['sensitive_input']); // password / card / one-time-code fields
+const ACTIONS = ['fill', 'click', 'js_execute', 'form_submit', 'navigation', 'read', 'sensitive_input', 'file_upload'];
+const DENY_BY_DEFAULT = new Set(['sensitive_input', 'file_upload']); // password / card fields; sending local files to a site
 
 function checkPermission(action) {
   const p = loadPerms();
@@ -131,32 +142,37 @@ function auditWrite(entry) {
 
 // Circuit breaker: a runaway or hijacked agent cannot fire unlimited state-changing actions.
 const MAX_ACTIONS_PER_MIN = Number(process.env.AUREN_MAX_ACTIONS_PER_MIN) || 120;
-const actionTimes = [];
-const STATE_CHANGING = new Set(['browser_click', 'browser_fill', 'browser_navigate', 'browser_execute_js', 'browser_act', 'browser_exec', 'browser_set_preference']);
-function rateLimited(weight) {
+const actionTimes = new Map(); // token id -> timestamps of recent state-changing actions
+const STATE_CHANGING = new Set(['browser_click', 'browser_fill', 'browser_navigate', 'browser_execute_js', 'browser_act', 'browser_exec', 'browser_set_preference', 'browser_hover', 'browser_dialog', 'browser_upload']);
+function rateLimited(weight, key = 'legacy') {
   const now = Date.now();
-  while (actionTimes.length && now - actionTimes[0] > 60_000) actionTimes.shift();
-  if (actionTimes.length + weight > MAX_ACTIONS_PER_MIN) return true;
-  for (let i = 0; i < weight; i++) actionTimes.push(now);
+  let times = actionTimes.get(key);
+  if (!times) actionTimes.set(key, times = []);
+  while (times.length && now - times[0] > 60_000) times.shift();
+  if (times.length + weight > MAX_ACTIONS_PER_MIN) return true;
+  for (let i = 0; i < weight; i++) times.push(now);
   return false;
 }
 
-function instrument(server) {
+function instrument(server, auth = LEGACY_AUTH) {
   const orig = server.registerTool.bind(server);
+  const who = { user: auth.user_id, token: auth.token_id };
   server.registerTool = (name, cfg, handler) => orig(name, cfg, async (args, extra) => {
     const t0 = Date.now();
     const p = loadPerms();
     let res;
-    if (p.panic && name !== 'browser_get_permissions') {
+    if (!scopeAllows(auth.scope, name)) {
+      res = { content: [{ type: 'text', text: `<permission_denied>This token has scope '${auth.scope}', which does not allow ${name}. Ask the user for a token with a higher scope (auren-token mint --scope ...).</permission_denied>` }] };
+    } else if (p.panic && name !== 'browser_get_permissions') {
       res = { content: [{ type: 'text', text: '<permission_denied>Agent access is suspended by the user (panic switch). Ask the user to run: auren-perm panic off</permission_denied>' }] };
-    } else if (STATE_CHANGING.has(name) && rateLimited(name === 'browser_exec' ? (args?.steps?.length || 1) : 1)) {
+    } else if (STATE_CHANGING.has(name) && rateLimited(name === 'browser_exec' ? (args?.steps?.length || 1) : 1, auth.token_id)) {
       res = { content: [{ type: 'text', text: `<error tool="${name}">Rate limit: more than ${MAX_ACTIONS_PER_MIN} actions in the last minute. Slow down or ask the user to raise AUREN_MAX_ACTIONS_PER_MIN.</error>` }] };
     } else {
-      try { res = await handler(args, extra); } catch (e) { auditWrite({ ts: new Date().toISOString(), tool: name, args: auditArgs(args), outcome: 'exception', ms: Date.now() - t0 }); throw e; }
+      try { res = await handler(args, extra); } catch (e) { auditWrite({ ts: new Date().toISOString(), ...who, tool: name, args: auditArgs(args), outcome: 'exception', ms: Date.now() - t0 }); throw e; }
     }
     const txt = (res?.content ?? []).map(c => c.text ?? '').join('');
     const outcome = (/<permission_denied>/.test(txt) || /ok="false"[^<]*>[^<]*(denied|blocked|suspended|only reading|requires user approval)/i.test(txt)) ? 'denied' : (/<error/.test(txt.slice(0, 120)) || /ok="false"/.test(txt)) ? 'error' : 'ok';
-    auditWrite({ ts: new Date().toISOString(), tool: name, args: auditArgs(args), outcome, ms: Date.now() - t0 });
+    auditWrite({ ts: new Date().toISOString(), ...who, tool: name, args: auditArgs(args), outcome, ms: Date.now() - t0 });
     return res;
   });
 }
@@ -221,9 +237,35 @@ const tabState = new Map();
 
 function getTabState(tabId) {
   if (!tabState.has(tabId)) {
-    tabState.set(tabId, { step: 0, url: '', lastFPs: new Map() });
+    tabState.set(tabId, { step: 0, url: '', lastFPs: new Map(), meta: new Map(), eidFrame: new Map() });
   }
   return tabState.get(tabId);
+}
+
+
+
+// Evaluate in the frame that owns `raw` (a cross-origin iframe has its own session), else in the main page.
+function evalEid(client, target, raw, params) {
+  const sid = getTabState(target.id).eidFrame.get(raw);
+  return sid ? client.send('Runtime.evaluate', params, sid) : client.Runtime.evaluate(params);
+}
+// Top-left of an OOPIF's content box in the main page's viewport, so frame-local coordinates can be clicked.
+async function frameOrigin(client, target, sid) {
+  const f = [...(sessionOf(target)?.frames.values() || [])].find(x => x.sessionId === sid);
+  if (!f) throw new Error('The iframe is gone; take a new snapshot');
+  const st = sessionOf(target);
+  if (!st.domEnabled) { await client.DOM.enable(); st.domEnabled = true; }
+  const { backendNodeId } = await client.DOM.getFrameOwner({ frameId: f.targetId });
+  await client.DOM.scrollIntoViewIfNeeded({ backendNodeId }).catch(() => {});
+  const { quads } = await client.DOM.getContentQuads({ backendNodeId });
+  return { x: quads[0][0], y: quads[0][1] };
+}
+
+// An element reference for page-side code: the eid's element, or (after a re-render) the unique element that matches
+// what the eid used to be.
+function eidExpr(target, raw) {
+  const meta = getTabState(target.id).meta.get(raw);
+  return `(__L.byEid(${JSON.stringify(raw)})||__L.relocate(${JSON.stringify(meta || null)}))`;
 }
 
 // --- CDP helpers ---
@@ -356,7 +398,20 @@ class SessionManager {
     // auto-evict on disconnect so a dropped socket does not linger in the pool
     client.on('disconnect', () => this._sessions.delete(target.id));
 
-    const session = { client, target, lastUsed: Date.now() };
+    const session = { client, target, lastUsed: Date.now(), dialog: null, popups: [], frames: new Map() };
+    // Cross-origin iframes live in their own renderer process and are separate CDP targets. Attach to them (flat
+    // sessions over this same socket) so snapshots, find and act can see and drive their content.
+    client.on('Target.attachedToTarget', (p) => {
+      if (p.targetInfo?.type === 'iframe') session.frames.set(p.sessionId, { sessionId: p.sessionId, targetId: p.targetInfo.targetId, url: p.targetInfo.url });
+    });
+    client.on('Target.detachedFromTarget', (p) => { session.frames.delete(p.sessionId); });
+    client.on('Target.targetInfoChanged', (p) => { const f = session.frames.get(p.targetInfo?.sessionId); if (f) f.url = p.targetInfo.url; });
+    await client.Target.setAutoAttach({ autoAttach: true, waitForDebuggerOnStart: false, flatten: true }).catch(() => {});
+    // A native dialog blocks the page; remember it so tools can say so instead of hanging. window.open / target=_blank
+    // popups are remembered so the action that caused them can report the new tab.
+    client.Page.on('javascriptDialogOpening', (p) => { session.dialog = { type: p.type, message: p.message, defaultPrompt: p.defaultPrompt }; });
+    client.Page.on('javascriptDialogClosed', () => { session.dialog = null; });
+    client.Page.on('windowOpen', (p) => { session.popups.push({ url: p.url, name: p.windowName, at: Date.now() }); if (session.popups.length > 20) session.popups.shift(); });
     this._sessions.set(target.id, session);
     return session;
   }
@@ -399,11 +454,14 @@ class SessionManager {
 }
 
 const sessions = new SessionManager();
-async function withCDP(tabId, fn) {
+async function withCDP(tabId, fn, opts = {}) {
   const session = await sessions.acquire(tabId ?? null);
   session.lastUsed = Date.now();
+  if (session.dialog && !opts.allowDialog) {
+    throw new Error(`A JavaScript dialog is open on this tab (${session.dialog.type}: "${String(session.dialog.message).slice(0, 120)}"). Call browser_dialog with action accept or dismiss first.`);
+  }
   try {
-    return await fn(session.client, session.target);
+    return await fn(session.client, session.target, session);
   } catch (e) {
     // Session may be stale/broken after this error, so drop it here rather
     // than reuse a possibly-dead connection on the next call.
@@ -424,6 +482,8 @@ function buildElementXml(item) {
   if (attrs.href) a += ` href="${escapeXml(attrs.href)}"`;
   if (attrs.type) a += ` type="${escapeXml(attrs.type)}"`;
   if (attrs.val !== undefined && attrs.val !== '') a += ` val="${escapeXml(attrs.val)}"`;
+  if (attrs.opts) a += ` opts="${escapeXml(attrs.opts)}"`;
+  if (attrs.ctx) a += ` ctx="${escapeXml(attrs.ctx)}"`;
   if (attrs.checked !== undefined) a += ` checked="${attrs.checked}"`;
   if (attrs.disabled) a += ' disabled="true"';
   if (attrs.expanded !== undefined) a += ` expanded="${attrs.expanded}"`;
@@ -467,10 +527,11 @@ function buildXml(data, state, isDiff) {
       regionBody.push(line);
       budget -= line.length + 1;
       added++;
+      state.meta.set(item.attrs.eid, { kind: item.kind, text: item.text, ctx: item.attrs.ctx || '' });
       const fp = `${item.kind}|${item.text}|${item.attrs.href || ''}`;
       newFPs.set(fp, { eid: item.attrs.eid, kind: item.kind, text: item.text, val: item.attrs.val });
     }
-    const trimmed = region.items.length - added;
+    const trimmed = region.items.length - added + (region.more || 0);
     if (trimmed > 0) {
       wasTruncated = true;
       regionBody.push(`    <!-- ${trimmed} more; use region="${escapeXml(region.name)}" to see all -->`);
@@ -494,101 +555,70 @@ function buildXml(data, state, isDiff) {
 // In-page "DOM quiet for quiet ms (or max ms)" wait, as source text for embedding in other evaluates.
 const SETTLE_PROMISE = (quiet, max) => `await new Promise(res=>{let t;const done=()=>{o.disconnect();res(1)};const o=new MutationObserver(()=>{clearTimeout(t);t=setTimeout(done,${Number(quiet)})});o.observe(document,{subtree:true,childList:true,attributes:true,characterData:true});t=setTimeout(done,${Number(quiet)});setTimeout(done,${Number(max)});});\n`;
 
-// Page-side helpers shared by snapshot/find/act. Elements a person could not see (display:none,
-// zero size, near-zero opacity or font, off the document horizontally, aria-hidden/hidden/inert) are
-// excluded: they are the usual hiding place for prompt-injection text aimed at agents. Invisible
-// Unicode (zero-width, bidi controls, "tag" characters) is stripped from any text we return.
-const PAGE_HELPERS = `
-function vis(el){
-  try{
-    if(el.closest('[aria-hidden="true"],[hidden],[inert]'))return false;
-    const cs=getComputedStyle(el);
-    if(cs.display==='none'||cs.visibility==='hidden'||cs.visibility==='collapse'||parseFloat(cs.opacity)<0.05)return false;
-    const r=el.getBoundingClientRect();
-    if(r.width<2||r.height<2)return false;
-    if(parseFloat(cs.fontSize)<2&&!/^(input|select|textarea|button)$/i.test(el.tagName))return false;
-    const dw=document.documentElement.scrollWidth;
-    if(r.right+window.scrollX<=0||r.left+window.scrollX>=dw)return false;
-    return true;
-  }catch(e){return true;}
-}
-function clean(s){return String(s).replace(/[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF]|[\\u{E0000}-\\u{E007F}]/gu,'');}
-`;
-
 // --- Snapshot JS builder ---
 function snapshotJs(mode, region, maxItems, settleOpts) {
   const mStr = JSON.stringify(mode || 'interactive');
-  const rExpr = region ? `document.querySelector(${JSON.stringify(region)})` : 'null';
+  const rExpr = region ? `(__L.deepQuery(${JSON.stringify(region)},1)[0]||null)` : 'null';
   const mN = Number(maxItems) || 30;
   const startN = eidCounter;
 
   return `(async function(){
-${settleOpts ? SETTLE_PROMISE(settleOpts.quiet, settleOpts.max) : ''}${PAGE_HELPERS}try{
+${settleOpts ? SETTLE_PROMISE(settleOpts.quiet, settleOpts.max) : ''}${PAGE_LIB}try{
 let n=${startN};let hid=0;
-function kind(el){
-  const t=el.tagName.toLowerCase(),r=(el.getAttribute('role')||'').toLowerCase(),ty=(el.type||'').toLowerCase();
-  if(t==='button'||r==='button'||ty==='button'||ty==='submit'||ty==='reset')return'btn';
-  if((t==='a'&&el.href)||r==='link')return'lnk';
-  if(t==='input'||t==='textarea'||r==='textbox'||r==='searchbox')return'inp';
-  if(t==='select'||r==='combobox'||r==='listbox')return'sel';
-  if(ty==='checkbox'||r==='checkbox')return'chk';
-  if(ty==='radio'||r==='radio')return'chk';
-  if(/^h[1-6]$/.test(t)||r==='heading')return'h';
-  if(r==='alert'||r==='status')return'alert';
-  if(r==='menuitem'||r==='tab'||r==='option')return'btn';
-  return'elt';
-}
-function txt(el){
-  return clean(el.getAttribute('aria-label')||el.textContent||el.value||el.getAttribute('placeholder')||el.getAttribute('title')||'').trim().replace(/\\s+/g,' ').slice(0,80);
-}
-function ex(el){
-  const k=kind(el),t=txt(el),eid=k+'-'+(++n);
-  el.setAttribute('data-eid',eid);
-  const tg=el.tagName.toLowerCase(),a={eid};
-  if(el.href)a.href=el.href.slice(0,120);
-  const ty=el.type;
-  if(ty&&!['text','hidden'].includes(ty))a.type=ty;
-  if(el.value&&!['button','submit','reset','a'].includes(tg))a.val=(ty==='password')?'[redacted]':String(el.value).slice(0,50);
-  if(ty==='checkbox'||ty==='radio')a.checked=el.checked;
-  if(el.disabled)a.disabled=true;
-  const exp=el.getAttribute('aria-expanded');
-  if(exp!==null)a.expanded=exp==='true';
-  return{kind:k,text:t,attrs:a};
-}
-document.querySelectorAll('[data-eid]').forEach(e=>e.removeAttribute('data-eid'));
+__L.clearEids();
 const mode=${mStr};
 const scopeEl=${rExpr};
 const maxN=${mN};
-const sels={
-  interactive:'a[href],button,input:not([type="hidden"]),select,textarea,[role="button"],[role="link"],[role="menuitem"],[role="tab"]',
-  full:'a[href],button,input:not([type="hidden"]),select,textarea,h1,h2,h3,h4,h5,h6,p,li,[role="button"],[role="link"],[role="alert"]',
-  outline:'h1,h2,h3,h4,h5,h6,[role="heading"]'
-};
-const sel=sels[mode]||sels.interactive;
-const root=scopeEl||document.body;
-const info={url:location.href,title:document.title,scroll:[Math.round(window.scrollX),Math.round(window.scrollY)],viewport:[window.innerWidth,window.innerHeight]};
-let regions;
-if(!scopeEl){
-  const lms=[
-    {name:'nav',q:'nav,[role="navigation"]'},
-    {name:'header',q:'header,[role="banner"]'},
-    {name:'main',q:'main,[role="main"],[role="search"]'},
-    {name:'aside',q:'aside,[role="complementary"]'},
-    {name:'footer',q:'footer,[role="contentinfo"]'}
-  ];
-  const assigned=new WeakSet();
-  regions=[];
-  for(const lm of lms){
-    const c=document.querySelector(lm.q);
-    if(!c)continue;
-    const items=[...c.querySelectorAll(sel)].filter(e=>{if(assigned.has(e))return false;assigned.add(e);if(!vis(e)){hid++;return false;}return true;}).slice(0,maxN).map(ex);
-    if(items.length)regions.push({name:lm.name,items});
+const sel=mode==='full'?__L.FULL:mode==='outline'?__L.OUTLINE:__L.INTERACTIVE;
+const LM=[['nav','nav,[role="navigation"]'],['header','header,[role="banner"]'],['main','main,[role="main"],[role="search"]'],['aside','aside,[role="complementary"]'],['footer','footer,[role="contentinfo"]']];
+function regionOf(el){
+  for(let e=el;e;e=null){
+    let p=e;
+    while(p){
+      for(const [nm,q] of LM){try{if(p.matches(q))return nm;}catch(x){}}
+      p=p.parentElement||(p.getRootNode&&p.getRootNode().host)||null;
+    }
   }
-  const rem=[...document.body.querySelectorAll(sel)].filter(e=>{if(assigned.has(e))return false;if(!vis(e)){hid++;return false;}return true;}).slice(0,maxN).map(ex);
-  if(rem.length)regions.push({name:'page',items:rem});
-}else{
-  const items=[...root.querySelectorAll(sel)].filter(e=>{if(!vis(e)){hid++;return false;}return true;}).slice(0,maxN).map(ex);
-  regions=[{name:'content',items}];
+  return 'page';
+}
+const info={url:location.href,title:document.title,scroll:[Math.round(window.scrollX),Math.round(window.scrollY)],viewport:[window.innerWidth,window.innerHeight]};
+const pool=scopeEl?__L.all(scopeEl):__L.all();
+const picked=[];
+for(const e of pool){
+  let ok=false;try{ok=e.matches(sel);}catch(x){}
+  if(!ok)continue;
+  if(!__L.vis(e)){hid++;continue;}
+  picked.push(e);
+}
+const groups=new Map();
+for(const e of picked){
+  const r=scopeEl?'content':regionOf(e);
+  if(!groups.has(r))groups.set(r,[]);
+  groups.get(r).push(e);
+}
+const order=scopeEl?['content']:['nav','header','main','aside','footer','page'];
+const regions=[];
+for(const r of order){
+  const els=groups.get(r);
+  if(!els||!els.length)continue;
+  // over the cap: show what is on screen first (then the rest in page order), but list everything in page order
+  let take=els;
+  if(els.length>maxN){
+    const vh=window.innerHeight;
+    const on=e=>{try{const r=e.getBoundingClientRect();return r.bottom>0&&r.top<vh;}catch(x){return false;}};
+    const idx=new Map(els.map((e,i)=>[e,i]));
+    take=[...els.filter(on),...els.filter(e=>!on(e))].slice(0,maxN).sort((a,b)=>idx.get(a)-idx.get(b));
+  }
+  const items=take.map(el=>{const it=__L.info(el);const eid=it.kind+'-'+(++n);el.setAttribute('data-eid',eid);it.attrs.eid=eid;it._el=el;return it;});
+  // controls whose names are not unique (six "Add to cart" buttons) or empty get their row context
+  const seen=new Map();
+  for(const it of items){const k=it.kind+'|'+it.text;seen.set(k,(seen.get(k)||0)+1);}
+  for(const it of items){
+    if(it.kind==='h'||it.kind==='alert')continue;
+    if(!it.text||seen.get(it.kind+'|'+it.text)>1){const c=__L.context(it._el,it.text);if(c)it.attrs.ctx=c;}
+    delete it._el;
+  }
+  regions.push({name:r,items,more:els.length-take.length});
 }
 return JSON.stringify({info,regions,nextN:n,hidden:hid});
 }catch(e){return JSON.stringify({error:e.message});}
@@ -605,6 +635,24 @@ async function takeSnapshot(client, resolvedTabId, opts = {}) {
   const data = JSON.parse(raw);
   if (data.info) { const b = domainBlocks(data.info.url, 'read'); if (b) return `<permission_denied>${escapeXml(b.reason)}</permission_denied>`; }
   if (typeof data.nextN === 'number') eidCounter = data.nextN;
+  // elements inside cross-origin iframes (separate processes) are added as one region per frame
+  state.eidFrame.clear();
+  const owner = sessions._sessions.get(resolvedTabId);
+  if (owner?.frames.size && !region) {
+    for (const fr of owner.frames.values()) {
+      try {
+        const rr = await client.send('Runtime.evaluate', { expression: snapshotJs(mode, null, maxItems, null), returnByValue: true, awaitPromise: true }, fr.sessionId);
+        const d = JSON.parse(rr?.result?.value || '{}');
+        if (!d.regions) continue;
+        if (typeof d.nextN === 'number') eidCounter = d.nextN;
+        const items = d.regions.flatMap(x => x.items);
+        for (const it of items) state.eidFrame.set(it.attrs.eid, fr.sessionId);
+        let host = ''; try { host = new URL(fr.url).host; } catch { /* about:blank etc. */ }
+        if (items.length) data.regions.push({ name: `frame ${host}`, items, more: 0 });
+        data.hidden = (data.hidden || 0) + (d.hidden || 0);
+      } catch { /* frame navigated away or detached */ }
+    }
+  }
   // when the caller knows the URL from before the action, decide diff-vs-baseline from the
   // snapshot itself instead of paying another round trip to ask the page for location.href
   const navigated = prevUrl !== undefined && data.info ? data.info.url !== prevUrl : undefined;
@@ -694,58 +742,137 @@ async function actNavigate(client, target, url, snap = null) {
   return {};
 }
 
+// A native alert/confirm/prompt blocks the page's main thread, so the click that opened it never acknowledges. Race the
+// pending work against the dialog event and return control with the dialog described, instead of hanging.
+function raceDialog(client, work) {
+  const w = watch(client, 'Page.javascriptDialogOpening', 120000);
+  return Promise.race([work.then(() => 'done'), w.promise.then(v => (v ? 'dialog' : 'timeout'))]).finally(() => w.cancel());
+}
+function dialogXml(session) {
+  const d = session?.dialog;
+  return d ? `<dialog type="${escapeXml(d.type)}" message="${escapeXml(String(d.message).slice(0, 300))}"${d.defaultPrompt ? ` default="${escapeXml(d.defaultPrompt)}"` : ''}>A JavaScript dialog is open and blocks the page. Call browser_dialog with action accept or dismiss.</dialog>` : '';
+}
+// Popups opened by the action (window.open, target=_blank) since `since`: report their tab ids.
+async function popupXml(session, since) {
+  const fresh = (session?.popups || []).filter(p => p.at >= since);
+  if (!fresh.length) return '';
+  let tabs = [];
+  try { tabs = (await CDP.List(MAC_CDP)).filter(t => t.type === 'page'); } catch { /* best effort */ }
+  const lines = fresh.map(p => {
+    const t = tabs.find(x => x.url === p.url) || tabs.find(x => x.url.startsWith(p.url));
+    return `<new_tab${t ? ` id="${escapeXml(t.id)}"` : ''} url="${escapeXml(String(p.url).slice(0, 200))}">Opened by the last action; pass tab_id to act on it, or browser_select_tab to switch.</new_tab>`;
+  });
+  return '\n' + lines.join('\n');
+}
+const sessionOf = (target) => sessions._sessions.get(target.id);
+
 async function actClick(client, target, raw, snap = null) {
-  const resolved = EID_RE.test(raw) ? `[data-eid="${raw}"]` : raw;
-  const elResult = await client.Runtime.evaluate({
-    expression: `(function(){
-      const el=document.querySelector(${JSON.stringify(resolved)});
+  const isEid = EID_RE.test(raw);
+  const session = sessionOf(target);
+  const fsid = isEid ? getTabState(target.id).eidFrame.get(raw) : null;
+  const elResult = await evalEid(client, target, raw, {
+    expression: `(function(){${PAGE_LIB}
+      const el=${isEid ? eidExpr(target, raw) : `__L.deepQuery(${JSON.stringify(raw)},1)[0]`};
       if(!el)return null;
-      el.scrollIntoView({block:'center',inline:'center'});
-      const r=el.getBoundingClientRect();
+      const c=__L.center(el);
       const f=el.closest('form');const ty=(el.getAttribute('type')||'').toLowerCase();const tg=el.tagName.toLowerCase();
       const submits=!!f&&((tg==='button'&&(ty===''||ty==='submit'))||(tg==='input'&&(ty==='submit'||ty==='image')));
-      return JSON.stringify({x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2),tag:el.tagName.toLowerCase(),href:el.href||'',url:location.href,submits});
+      const a=el.closest('a[href]');
+      const covered=(()=>{try{if(el.ownerDocument!==document)return'';let top=document.elementFromPoint(c.x,c.y);while(top&&top.shadowRoot&&top.shadowRoot.elementFromPoint){const inner=top.shadowRoot.elementFromPoint(c.x,c.y);if(!inner||inner===top)break;top=inner;}
+        if(!top)return'';for(let e=el;e;e=__L.parentOf(e))if(e===top)return'';for(let e=top;e;e=__L.parentOf(e))if(e===el)return'';
+        return top.tagName.toLowerCase()+(top.id?'#'+top.id:'')+' "'+(top.innerText||'').trim().slice(0,40)+'"';}catch(e){return''}})();
+      return JSON.stringify({x:c.x,y:c.y,tag:el.tagName.toLowerCase(),href:a?a.href:'',target:a?(a.getAttribute('target')||''):'',url:location.href,submits,covered});
     })()`,
     returnByValue: true
   });
   if (!elResult?.result?.value) return { error: `Element not found: ${raw}` };
   const el = JSON.parse(elResult.result.value);
+  if (fsid) { const o = await frameOrigin(client, target, fsid); el.x += o.x; el.y += o.y; }
   { const b = domainBlocks(el.url, 'write'); if (b) return { denied: b }; }
   if (el.submits) { const p = checkPermission('form_submit'); if (!p.allowed) return { denied: p }; }
-  if (el.href && el.tag === 'a' && /^https?:/i.test(el.href)) { const b = domainBlocks(el.href, 'read'); if (b) return { denied: b }; }
+  if (el.href && /^https?:/i.test(el.href)) { const b = domainBlocks(el.href, 'read'); if (b) return { denied: b }; }
+  const startedAt = Date.now();
   const ctx = { ...watchNav(client), prevUrl: el.url };
+  // A plain link to another document is opened directly (deterministic, one round trip). Fragment-only links never fire
+  // a load event, links with a target open a popup, and links with handlers may preventDefault: those get a real click.
+  const sameDoc = el.href && el.href.split('#')[0] === el.url.split('#')[0];
+  const direct = el.tag === 'a' && el.href && /^https?:/i.test(el.href) && !sameDoc && (!el.target || el.target === '_self');
   try {
-    if (el.href && el.tag === 'a' && /^https?:/i.test(el.href)) {
+    if (direct) {
       await client.Page.navigate({ url: el.href });
       await ctx.loadW.promise;
       ctx.navW.fired = true;
     } else {
       // Real pointer events only (a JS .click() followed by a mouse click would activate
       // toggles/checkboxes twice and undo them). Press and release are pipelined: one round trip.
-      await Promise.all([
+      const work = Promise.all([
+        client.Input.dispatchMouseEvent({ type: 'mouseMoved', x: el.x, y: el.y }),
         client.Input.dispatchMouseEvent({ type: 'mousePressed', x: el.x, y: el.y, button: 'left', clickCount: 1 }),
         client.Input.dispatchMouseEvent({ type: 'mouseReleased', x: el.x, y: el.y, button: 'left', clickCount: 1 }),
       ]);
+      if ((await raceDialog(client, work)) === 'dialog') {
+        ctx.cancel();
+        return { xml: dialogXml(session) };
+      }
     }
   } catch (e) { ctx.cancel(); throw e; }
-  return afterAction(client, target, ctx, snap);
+  const r = await afterAction(client, target, ctx, snap);
+  const extra = await popupXml(session, startedAt);
+  const warn = el.covered ? `\n<note covered_by="${escapeXml(el.covered)}">The click landed on another element covering the target; dismiss the overlay first if nothing happened.</note>` : '';
+  if (r?.xml !== undefined && (extra || warn)) r.xml += warn + extra;
+  return r;
+}
+
+async function actHover(client, target, raw, snap = null) {
+  const isEid = EID_RE.test(raw);
+  const hsid = isEid ? getTabState(target.id).eidFrame.get(raw) : null;
+  const r = await evalEid(client, target, raw, {
+    expression: `(function(){${PAGE_LIB}
+      const el=${isEid ? eidExpr(target, raw) : `__L.deepQuery(${JSON.stringify(raw)},1)[0]`};
+      if(!el)return null;
+      const c=__L.center(el);
+      return JSON.stringify({x:c.x,y:c.y,url:location.href});
+    })()`,
+    returnByValue: true
+  });
+  if (!r?.result?.value) return { error: `Element not found: ${raw}` };
+  const el = JSON.parse(r.result.value);
+  if (hsid) { const o = await frameOrigin(client, target, hsid); el.x += o.x; el.y += o.y; }
+  { const b = domainBlocks(el.url, 'read'); if (b) return { denied: b }; }
+  // two moves: the first places the pointer, the second guarantees mouseenter/mouseover on the final target
+  await client.Input.dispatchMouseEvent({ type: 'mouseMoved', x: Math.max(1, el.x - 3), y: Math.max(1, el.y - 3) });
+  await client.Input.dispatchMouseEvent({ type: 'mouseMoved', x: el.x, y: el.y });
+  await settle(client, 60, 400);
+  if (snap) return { xml: await takeSnapshot(client, target.id, snap) };
+  return {};
 }
 
 async function actFill(client, target, raw, value, snap = null) {
   const allowSensitive = checkPermission('sensitive_input').allowed;
-  const resolved = EID_RE.test(raw) ? `[data-eid="${raw}"]` : raw;
-  const r = await client.Runtime.evaluate({
-    expression: `(function(){
-      const el=document.querySelector(${JSON.stringify(resolved)});
+  const isEid = EID_RE.test(raw);
+  const r = await evalEid(client, target, raw, {
+    expression: `(function(){${PAGE_LIB}
+      const el=${isEid ? eidExpr(target, raw) : `__L.deepQuery(${JSON.stringify(raw)},1)[0]`};
       if(!el)return'Not found';
       const ty=(el.getAttribute('type')||'').toLowerCase();const ac=(el.getAttribute('autocomplete')||'').toLowerCase();
       const nm=((el.getAttribute('name')||'')+' '+(el.id||'')).toLowerCase();
       const sensitive=ty==='password'||/^(cc-|one-time-code|new-password|current-password)/.test(ac)||/(card.?num|cvv|cvc|ssn|social.?sec)/.test(nm);
       if(sensitive&&!${allowSensitive})return JSON.stringify({sensitive:true,url:location.href});
+      if(!__L.fillable(el))return JSON.stringify({notFillable:true,tag:el.tagName.toLowerCase(),name:__L.name(el),url:location.href});
       el.focus();
-      const desc=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value');
-      if(desc&&desc.set)desc.set.call(el,${JSON.stringify(value)});
-      else el.value=${JSON.stringify(value)};
+      const want=${JSON.stringify(value)};
+      if(el.tagName==='SELECT'){
+        const lc=want.toLowerCase();
+        const o=[...el.options].find(o=>o.value===want)||[...el.options].find(o=>o.textContent.trim().toLowerCase()===lc)||[...el.options].find(o=>o.textContent.trim().toLowerCase().includes(lc));
+        if(!o)return JSON.stringify({noOption:true,options:[...el.options].map(o=>o.textContent.trim()).slice(0,12),url:location.href});
+        el.value=o.value;
+      }else if(el.isContentEditable&&!('value' in el)){
+        el.textContent=want;
+      }else{
+        const desc=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value');
+        if(desc&&desc.set)desc.set.call(el,want);
+        else el.value=want;
+      }
       el.dispatchEvent(new Event('input',{bubbles:true}));
       el.dispatchEvent(new Event('change',{bubbles:true}));
       return JSON.stringify({ok:true,url:location.href});
@@ -756,6 +883,8 @@ async function actFill(client, target, raw, value, snap = null) {
   const fr = JSON.parse(r?.result?.value || '{}');
   { const b = fr.url ? domainBlocks(fr.url, 'write') : null; if (b) return { denied: b }; }
   if (fr.sensitive) return { denied: { reason: "This is a password / payment / one-time-code field; agent input there is blocked. The user can allow it with 'auren-perm set sensitive_input allow'." } };
+  if (fr.notFillable) return { error: `Cannot fill: ${raw} is a <${fr.tag}> ("${fr.name}"), not a text field. Click it first if it opens a search box, or use browser_find with a CSS selector such as input[type=search].` };
+  if (fr.noOption) return { error: `No option matches '${value}'. Options: ${fr.options.join(' | ')}` };
   // fill never navigates by itself, so no navigation watch is needed
   return afterAction(client, target, { navW: { fired: false, cancel() {} }, loadW: { promise: Promise.resolve(true), cancel() {} }, cancel() {} }, snap, 30, 150);
 }
@@ -815,9 +944,9 @@ const EID_RE = /^(btn|lnk|inp|sel|chk|h|elt|alert)-\d+$/;
 const errXml = (tool, msg) => ({ content: [{ type: 'text', text: `<error tool="${tool}">${escapeXml(msg)}</error>` }] });
 
 // --- MCP server ---
-function buildServer() {
+function buildServer(auth = LEGACY_AUTH) {
   const server = new McpServer({ name: 'auren-browser', version: '2.1.2' });
-  instrument(server);
+  instrument(server, auth);
 
   server.registerTool('browser_get_tabs', {
     description: 'List all open tabs in Auren',
@@ -913,8 +1042,44 @@ function buildServer() {
       return errXml('browser_fill', e.message);
     }
   });
+  // Resolve a text/CSS query on the page with the shared library (accessible names, shadow DOM, iframes) and mark the
+  // hits with eids. interactiveOnly=false also matches plain text elements (used for reads and as a click fallback).
+  const resolveJs = (q, limit, interactiveOnly, intent) => `(function(){${PAGE_LIB}
+    let n=${eidCounter};
+    const hits=__L.resolve(${JSON.stringify(q)},${limit},${interactiveOnly},${JSON.stringify(intent || null)});
+    const items=hits.map(h=>{const it=__L.info(h.el);const eid=it.kind+'-'+(++n);h.el.setAttribute('data-eid',eid);it.attrs.eid=eid;it.score=h.score;const c=__L.context(h.el,it.text);if(c)it.attrs.ctx=c;return it;});
+    return JSON.stringify({items,nextN:n,tie:hits.length>1&&hits[1].score===hits[0].score});
+  })()`;
+  async function resolveQuery(client, target, q, limit, interactiveOnly, intent) {
+    const session = sessionOf(target), state = getTabState(target.id);
+    const run = async (inter, sid) => {
+      const params = { expression: resolveJs(q, limit, inter, intent), returnByValue: true };
+      const r = sid ? await client.send('Runtime.evaluate', params, sid).catch(() => null) : await client.Runtime.evaluate(params);
+      const f = JSON.parse(r?.result?.value || '{"items":[]}');
+      if (typeof f.nextN === 'number') eidCounter = f.nextN;
+      return f;
+    };
+    for (const inter of interactiveOnly ? [true, false] : [false]) {
+      let found = await run(inter, null);
+      if (!found.items.length && session?.frames.size) {
+        for (const fr of session.frames.values()) {
+          const ff = await run(inter, fr.sessionId);
+          if (ff.items.length) { found = ff; for (const it of ff.items) state.eidFrame.set(it.attrs.eid, fr.sessionId); break; }
+        }
+      }
+      if (found.items.length) {
+        for (const it of found.items) state.meta.set(it.attrs.eid, { kind: it.kind, text: it.text, ctx: it.attrs.ctx || '' });
+        return found;
+      }
+    }
+    return { items: [] };
+  }
+  const ambiguityNote = (q, found) => found.tie
+    ? `\n<note ambiguous="${found.items.length}">"${escapeXml(q)}" matched several elements equally well; acted on ${escapeXml(found.items[0].attrs.eid)}. Others: ${found.items.slice(1).map(i => `${i.attrs.eid}${i.attrs.ctx ? ` (${escapeXml(i.attrs.ctx)})` : ''}`).join(', ')}. Use browser_find, then an eid.</note>`
+    : '';
+
   server.registerTool('browser_act', {
-    description: 'Find an element by natural language description and act on it in one step. action: "click", "fill", "read". For fill, provide value. Eliminates the snapshot→find→act round trip.',
+    description: 'Find an element by its visible name (label, placeholder, button text, aria-label) or CSS selector and act on it in one step. action: "click", "fill", "read". For fill, provide value (for a <select>, the option text or value). Pierces shadow DOM and same-origin iframes. Eliminates the snapshot→find→act round trip.',
     inputSchema: {
       find: z.string(),
       action: z.enum(['click', 'fill', 'read']),
@@ -925,47 +1090,28 @@ function buildServer() {
     try {
       if (action === 'click' || action === 'fill') {
         const perm = checkPermission(action);
-        if (!perm.allowed) return { content: [{ type: 'text', text: 
-`<permission_denied>${perm.reason}</permission_denied>` }] };
+        if (!perm.allowed) return { content: [{ type: 'text', text: `<permission_denied>${perm.reason}</permission_denied>` }] };
       }
       return await withCDP(tab_id, async (client, target) => {
-        const startN = eidCounter;
-        const findResult = await client.Runtime.evaluate({
-          expression: `(function(){
-            let n=${startN};
-            const q=${JSON.stringify(find)};
-            const isSel=/^[.#[*]/.test(q)||q.includes('>')||/\\s[.#[]/.test(q);
-            function kind(el){const t=el.tagName.toLowerCase(),r=(el.getAttribute('role')||'').toLowerCase(),ty=(el.type||'').toLowerCase();if(t==='button'||r==='button'||ty==='button')return'btn';if((t==='a'&&el.href)||r==='link')return'lnk';if(t==='input'||t==='textarea'||r==='textbox')return'inp';if(t==='select'||r==='combobox')return'sel';return'elt';}
-            let results=[];
-            if(isSel){try{results=[...document.querySelectorAll(q)].slice(0,1);}catch(_){}}
-            if(!results.length){const all=[...document.querySelectorAll('a,button,input,select,textarea,[role]')];results=all.filter(el=>(el.textContent||el.value||el.getAttribute('aria-label')||el.getAttribute('placeholder')||'').trim().toLowerCase().includes(q.toLowerCase())).slice(0,1);}
-            if(!results.length)return JSON.stringify({error:'not found'});
-            const el=results[0];const k=kind(el);const eid=k+'-'+(++n);el.setAttribute('data-eid',eid);
-            return JSON.stringify({eid,kind:k,text:(el.textContent||el.value||el.getAttribute('aria-label')||'').trim().slice(0,80),nextN:n});
-          })()`,
-          returnByValue: true
-        });
-        const found = JSON.parse(findResult?.result?.value || '{}');
-        if (found.error) return { content: [{ type: 'text', text: `<error>browser_act: element not found: ${escapeXml(find)}</error>` }] };
-        if (typeof found.nextN === 'number') eidCounter = found.nextN;
-
-        const resolved = `[data-eid="${found.eid}"]`;
+        const found = await resolveQuery(client, target, find, 3, action !== 'read', action);
+        if (!found.items.length) return { content: [{ type: 'text', text: `<error>browser_act: element not found: ${escapeXml(find)}</error>` }] };
+        const top = found.items[0].attrs.eid;
+        const note = ambiguityNote(find, found);
         if (action === 'read') {
-          const r = await client.Runtime.evaluate({ expression: `(function(){const el=document.querySelector(${JSON.stringify(resolved)});return el?(el.innerText||el.textContent||el.value||'').trim().slice(0,2000):'[not found]';})()`, returnByValue: true });
-          return { content: [{ type: 'text', text: r?.result?.value ?? '[no content]' }] };
+          const r = await evalEid(client, target, top, { expression: `(function(){${PAGE_LIB}const el=__L.byEid(${JSON.stringify(top)});return el?__L.textOf(el).slice(0,2000):'[not found]';})()`, returnByValue: true });
+          return { content: [{ type: 'text', text: (r?.result?.value ?? '[no content]') + note }] };
         }
         if (action === 'fill') {
           if (value === undefined) return { content: [{ type: 'text', text: '<error>browser_act fill requires value</error>' }] };
-          await client.Runtime.evaluate({ expression: `(function(){const el=document.querySelector(${JSON.stringify(resolved)});if(!el)return;el.focus();const d=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value');if(d&&d.set)d.set.call(el,${JSON.stringify(value)});else el.value=${JSON.stringify(value)};el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));})()`, returnByValue: true });
-          const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: true, settle: { quiet: 30, max: 150 } });
-          return { content: [{ type: 'text', text: xml }] };
-        }
-        if (action === 'click') {
-          const r = await actClick(client, target, found.eid, { mode: 'interactive' });
+          const r = await actFill(client, target, top, value, { mode: 'interactive', isDiff: true });
           if (r.denied) return denied(r.denied);
           if (r.error) return errXml('browser_act', r.error);
-          return { content: [{ type: 'text', text: r.xml }] };
+          return { content: [{ type: 'text', text: r.xml + note }] };
         }
+        const r = await actClick(client, target, top, { mode: 'interactive' });
+        if (r.denied) return denied(r.denied);
+        if (r.error) return errXml('browser_act', r.error);
+        return { content: [{ type: 'text', text: r.xml + note }] };
       });
     } catch (e) {
       return { content: [{ type: 'text', text: `<error tool="browser_act">${escapeXml(e.message)}</error>` }] };
@@ -973,47 +1119,19 @@ function buildServer() {
   });
 
   server.registerTool('browser_find', {
-    description: 'Find elements matching a text query, CSS selector, or ARIA label. Returns up to 5 matches with eids. Use when you need to locate an element without a full page snapshot.',
+    description: 'Find elements by visible name (label, placeholder, button text, aria-label) or CSS selector. Returns up to 5 matches, best first, with eids and row context for disambiguation. Pierces shadow DOM and same-origin iframes. Use when you need to locate an element without a full page snapshot.',
     inputSchema: { query: z.string(), tab_id: z.string().optional() }
   }, async ({ query, tab_id }) => {
     try {
       const perm = checkPermission('read');
       if (!perm.allowed) return denied(perm);
-      return await withCDP(tab_id, async (client) => {
-        const startN = eidCounter;
-        const r = await client.Runtime.evaluate({
-          expression: `(function(){
-            let n=${startN};
-            const q=${JSON.stringify(query)};
-            const isSel=/^[.#[*]/.test(q)||q.includes('>')||/\\s[.#[]/.test(q);
-            function kind(el){const t=el.tagName.toLowerCase(),r=(el.getAttribute('role')||'').toLowerCase(),ty=(el.type||'').toLowerCase();if(t==='button'||r==='button'||ty==='button')return'btn';if((t==='a'&&el.href)||r==='link')return'lnk';if(t==='input'||t==='textarea'||r==='textbox')return'inp';if(t==='select'||r==='combobox')return'sel';if(/^h[1-6]$/.test(t)||r==='heading')return'h';return'elt';}
-            let results=[];
-            if(isSel){try{results=[...document.querySelectorAll(q)].slice(0,5);}catch(_){}}
-            if(!results.length){
-              const all=[...document.querySelectorAll('a,button,input,select,textarea,[role],h1,h2,h3,h4,h5,h6')];
-              results=all.filter(el=>(el.textContent||el.value||el.getAttribute('aria-label')||el.getAttribute('placeholder')||'').trim().toLowerCase().includes(q.toLowerCase())).slice(0,5);
-            }
-            const items=results.map(el=>{const k=kind(el);const eid=k+'-'+(++n);el.setAttribute('data-eid',eid);return{kind:k,eid,text:(el.textContent||el.value||el.getAttribute('aria-label')||'').trim().slice(0,80),href:el.href||'',type:el.type||''};});
-            return JSON.stringify({items,nextN:n});
-          })()`,
-          returnByValue: true
-        });
-
-        const raw = r?.result?.value;
-        if (!raw) return { content: [{ type: 'text', text: '<results count="0" />' }] };
-        const data = JSON.parse(raw);
-        if (typeof data.nextN === 'number') eidCounter = data.nextN;
-
-        if (!data.items.length) {
+      return await withCDP(tab_id, async (client, target) => {
+        const found = await resolveQuery(client, target, query, 5, true);
+        if (!found.items.length) {
           return { content: [{ type: 'text', text: `<results count="0">No elements matching: ${escapeXml(query)}</results>` }] };
         }
-        const lines = [`<results count="${data.items.length}">`];
-        for (const item of data.items) {
-          let a = ` eid="${escapeXml(item.eid)}"`;
-          if (item.href) a += ` href="${escapeXml(item.href.slice(0, 100))}"`;
-          if (item.type && !['text', 'hidden', ''].includes(item.type)) a += ` type="${escapeXml(item.type)}"`;
-          lines.push(`  <${item.kind}${a}>${escapeXml(item.text)}</${item.kind}>`);
-        }
+        const lines = [`<results count="${found.items.length}">`];
+        for (const item of found.items) lines.push(buildElementXml(item).replace(/^    /, '  '));
         lines.push('</results>');
         return { content: [{ type: 'text', text: lines.join('\n') }] };
       });
@@ -1046,15 +1164,15 @@ function buildServer() {
         if (!region) {
           selExpr = 'document.body';
         } else if (/^(btn|lnk|inp|sel|chk|h|elt|alert)-\d+$/.test(region)) {
-          selExpr = `document.querySelector('[data-eid="${region}"]')`;
+          selExpr = `__L.byEid(${JSON.stringify(region)})`;
         } else if (lmMap[region]) {
-          selExpr = `document.querySelector(${JSON.stringify(lmMap[region])})`;
+          selExpr = `(__L.deepQuery(${JSON.stringify(lmMap[region])},1)[0]||null)`;
         } else {
-          selExpr = `document.querySelector(${JSON.stringify(region)})`;
+          selExpr = `(__L.deepQuery(${JSON.stringify(region)},1)[0]||null)`;
         }
 
         const r = await client.Runtime.evaluate({
-          expression: `(function(){const el=${selExpr};if(!el)return'[not found]';const t=(el.innerText||el.textContent||'').replace(/[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF]|[\\u{E0000}-\\u{E007F}]/gu,'').replace(/\\n{3,}/g,'\\n\\n').trim();return t.length>${cap}?t.slice(0,${cap})+'\\n[truncated]':t;})()`,
+          expression: `(function(){${PAGE_LIB}const el=${selExpr};if(!el)return'[not found]';const t=(el.innerText||el.textContent||'').replace(/[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF]|[\\u{E0000}-\\u{E007F}]/gu,'').replace(/\\n{3,}/g,'\\n\\n').trim();return t.length>${cap}?t.slice(0,${cap})+'\\n[truncated]':t;})()`,
           returnByValue: true
         });
         return { content: [{ type: 'text', text: r?.result?.value ?? '[no content]' }] };
@@ -1129,7 +1247,7 @@ function buildServer() {
 `<permission_denied>${perm.reason}</permission_denied>` }] };
       return await withCDP(tab_id, async (client) => {
         const r = await client.Runtime.evaluate({ expression: code, returnByValue: true, awaitPromise: true });
-        return { content: [{ type: 'text', text: JSON.stringify(r.result.value ?? r.result.description) }] };
+        return { content: [{ type: 'text', text: JSON.stringify(r.result.value ?? r.result.description) ?? 'undefined' }] };
       });
     } catch (e) {
       return { content: [{ type: 'text', text: `<error tool="browser_execute_js">${escapeXml(e.message)}</error>` }] };
@@ -1168,10 +1286,10 @@ function buildServer() {
   });
 
   server.registerTool('browser_exec', {
-    description: 'Run a sequence of browser steps in ONE call (one round trip instead of one per step). steps: array (max 25) of {op, ...}. ops: navigate{url} | click{eid|selector} | fill{eid|selector,value} | press{key: Enter|Tab|Escape|Backspace|Arrow*|Space} | scroll{direction,pixels} | wait_for{selector|text,timeout_ms} | read{region,max_chars} | snapshot{mode,region,max_items} | js{code}. Stops at the first failing step. Each step is permission-checked like its single-step tool. Returns a per-step summary plus the output of read/snapshot/js steps and, unless the last step already returns a view, a final interactive snapshot.',
+    description: 'Run a sequence of browser steps in ONE call (one round trip instead of one per step). steps: array (max 25) of {op, ...}. ops: navigate{url} | click{eid|selector} | hover{eid|selector} | fill{eid|selector,value} | press{key: Enter|Tab|Escape|Backspace|Arrow*|Space} | scroll{direction,pixels} | wait_for{selector|text,timeout_ms} | read{region,max_chars} | snapshot{mode,region,max_items} | js{code}. Stops at the first failing step. Each step is permission-checked like its single-step tool. Returns a per-step summary plus the output of read/snapshot/js steps and, unless the last step already returns a view, a final interactive snapshot.',
     inputSchema: {
       steps: z.array(z.object({
-        op: z.enum(['navigate', 'click', 'fill', 'press', 'scroll', 'wait_for', 'read', 'snapshot', 'js']),
+        op: z.enum(['navigate', 'click', 'hover', 'fill', 'press', 'scroll', 'wait_for', 'read', 'snapshot', 'js']),
         url: z.string().optional(), eid: z.string().optional(), selector: z.string().optional(), value: z.string().optional(),
         key: z.string().optional(), direction: z.enum(['up', 'down', 'top', 'bottom']).optional(), pixels: z.number().optional(),
         text: z.string().optional(), timeout_ms: z.number().optional(), region: z.string().optional(), max_chars: z.number().optional(),
@@ -1181,7 +1299,7 @@ function buildServer() {
       final_snapshot: z.boolean().default(true),
     }
   }, async ({ steps, tab_id, final_snapshot }) => {
-    const NEED = { navigate: 'navigation', click: 'click', fill: 'fill', press: 'fill', scroll: 'read', wait_for: 'read', read: 'read', snapshot: 'read', js: 'js_execute' };
+    const NEED = { navigate: 'navigation', click: 'click', hover: 'click', fill: 'fill', press: 'fill', scroll: 'read', wait_for: 'read', read: 'read', snapshot: 'read', js: 'js_execute' };
     try {
       return await withCDP(tab_id, async (client, target) => {
         const out = []; let completed = 0; let failed = null; let lastView = false; let navigatedSinceView = false;
@@ -1199,6 +1317,8 @@ function buildServer() {
                 else { const r = await actNavigate(client, target, st.url); err = r.error ?? r.denied?.reason ?? null; navigatedSinceView = true; }
               } else if (st.op === 'click') {
                 if (!raw) err = 'Provide eid or selector'; else { const r = await actClick(client, target, raw); err = r.error ?? r.denied?.reason ?? null; if (r.didNavigate) navigatedSinceView = true; }
+              } else if (st.op === 'hover') {
+                if (!raw) err = 'Provide eid or selector'; else { const r = await actHover(client, target, raw); err = r.error ?? r.denied?.reason ?? null; }
               } else if (st.op === 'fill') {
                 if (!raw) err = 'Provide eid or selector'; else if (st.value === undefined) err = 'fill requires value'; else { const r = await actFill(client, target, raw, st.value); err = r.error ?? r.denied?.reason ?? null; }
               } else if (st.op === 'press') {
@@ -1209,14 +1329,14 @@ function buildServer() {
                 if (!st.selector && !st.text) err = 'wait_for needs selector or text'; else err = (await actWaitFor(client, st)).error ?? null;
               } else if (st.op === 'read') {
                 const cap = Math.min(Number(st.max_chars) || 4000, 12000);
-                const sel = !st.region ? 'document.body' : EID_RE.test(st.region) ? `document.querySelector('[data-eid="${st.region}"]')` : `document.querySelector(${JSON.stringify(st.region)})`;
-                const r = await client.Runtime.evaluate({ expression: `(function(){const el=${sel};if(!el)return'[not found]';const t=(el.innerText||el.textContent||'').replace(/[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF]|[\\u{E0000}-\\u{E007F}]/gu,'').replace(/\\n{3,}/g,'\\n\\n').trim();return t.length>${cap}?t.slice(0,${cap})+'\\n[truncated]':t;})()`, returnByValue: true });
+                const sel = !st.region ? 'document.body' : EID_RE.test(st.region) ? `__L.byEid(${JSON.stringify(st.region)})` : `(__L.deepQuery(${JSON.stringify(st.region)},1)[0]||null)`;
+                const r = await client.Runtime.evaluate({ expression: `(function(){${PAGE_LIB}const el=${sel};if(!el)return'[not found]';const t=(el.innerText||el.textContent||'').replace(/[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF]|[\\u{E0000}-\\u{E007F}]/gu,'').replace(/\\n{3,}/g,'\\n\\n').trim();return t.length>${cap}?t.slice(0,${cap})+'\\n[truncated]':t;})()`, returnByValue: true });
                 body = r?.result?.value ?? ''; lastView = true;
               } else if (st.op === 'snapshot') {
                 body = await takeSnapshot(client, target.id, { mode: st.mode ?? 'interactive', region: st.region ?? null, maxItems: st.max_items, isDiff: false }); lastView = true; navigatedSinceView = false;
               } else if (st.op === 'js') {
                 const r = await client.Runtime.evaluate({ expression: st.code ?? '', returnByValue: true, awaitPromise: true });
-                body = JSON.stringify(r.result?.value ?? r.result?.description ?? null); lastView = true;
+                body = JSON.stringify(r.result?.value ?? r.result?.description ?? null) ?? 'undefined'; lastView = true;
               }
             } catch (e) { err = e.message; }
           }
@@ -1233,6 +1353,75 @@ function buildServer() {
       });
     } catch (e) {
       return errXml('browser_exec', e.message);
+    }
+  });
+
+  server.registerTool('browser_hover', {
+    description: 'Move the pointer over an element by eid or CSS selector, to open hover menus and tooltips. Returns a snapshot diff showing what appeared.',
+    inputSchema: { eid: z.string().optional(), selector: z.string().optional(), tab_id: z.string().optional() }
+  }, async ({ eid, selector, tab_id }) => {
+    try {
+      const perm = checkPermission('click');
+      if (!perm.allowed) return denied(perm);
+      return await withCDP(tab_id, async (client, target) => {
+        const raw = eid || selector;
+        if (!raw) return errXml('browser_hover', 'Provide eid or selector');
+        const r = await actHover(client, target, raw, { mode: 'interactive', isDiff: true });
+        if (r.denied) return denied(r.denied);
+        if (r.error) return errXml('browser_hover', r.error);
+        return { content: [{ type: 'text', text: r.xml }] };
+      });
+    } catch (e) {
+      return errXml('browser_hover', e.message);
+    }
+  });
+
+  server.registerTool('browser_dialog', {
+    description: 'Answer a native JavaScript dialog (alert, confirm, prompt, beforeunload) that a click opened and that is blocking the page. action: accept or dismiss; text answers a prompt. Any other tool reports the open dialog until it is answered.',
+    inputSchema: { action: z.enum(['accept', 'dismiss']), text: z.string().optional(), tab_id: z.string().optional() }
+  }, async ({ action, text, tab_id }) => {
+    try {
+      const perm = checkPermission('click');
+      if (!perm.allowed) return denied(perm);
+      return await withCDP(tab_id, async (client, target, session) => {
+        if (!session.dialog) return errXml('browser_dialog', 'No JavaScript dialog is open on this tab');
+        const had = session.dialog;
+        await client.Page.handleJavaScriptDialog({ accept: action === 'accept', ...(text !== undefined ? { promptText: text } : {}) });
+        session.dialog = null;
+        await settle(client, 40, 300);
+        const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: true });
+        return { content: [{ type: 'text', text: `<dialog_closed type="${escapeXml(had.type)}" action="${action}" />\n${xml}` }] };
+      }, { allowDialog: true });
+    } catch (e) {
+      return errXml('browser_dialog', e.message);
+    }
+  });
+
+  server.registerTool('browser_upload', {
+    description: 'Attach local files to an <input type=file> (by eid or CSS selector). The paths are on the machine running the browser. Requires the file_upload permission, which is denied until the user allows it (auren-perm set file_upload allow).',
+    inputSchema: { eid: z.string().optional(), selector: z.string().optional(), files: z.array(z.string()).min(1).max(10), tab_id: z.string().optional() }
+  }, async ({ eid, selector, files, tab_id }) => {
+    try {
+      const perm = checkPermission('file_upload');
+      if (!perm.allowed) return denied(perm);
+      for (const f of files) if (!path.isAbsolute(f)) return errXml('browser_upload', `Use absolute paths: ${f}`);
+      return await withCDP(tab_id, async (client, target) => {
+        const raw = eid || selector;
+        if (!raw) return errXml('browser_upload', 'Provide eid or selector');
+        const isEid = EID_RE.test(raw);
+        const r = await client.Runtime.evaluate({ expression: `(function(){${PAGE_LIB}
+          const el=${isEid ? eidExpr(target, raw) : `__L.deepQuery(${JSON.stringify(raw)},1)[0]`};
+          return el&&el.tagName==='INPUT'&&el.type==='file'?el:null;})()` });
+        if (!r?.result?.objectId) return errXml('browser_upload', `No file input found: ${raw}`);
+        const url = await liveUrl(client);
+        { const b = domainBlocks(url, 'write'); if (b) return denied(b); }
+        await client.DOM.setFileInputFiles({ files, objectId: r.result.objectId });
+        await settle(client, 40, 300);
+        const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: true });
+        return { content: [{ type: 'text', text: `<uploaded count="${files.length}" />\n${xml}` }] };
+      });
+    } catch (e) {
+      return errXml('browser_upload', e.message);
     }
   });
 
@@ -1472,9 +1661,15 @@ app.use('/admin', admin);
 
 async function handleMcp(req, res) {
   const bearer = (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
-  if (KEY && !keyMatches(req.params.key ?? bearer)) return res.status(404).json({ error: 'not found' });
+  // The /mcp/<key> path form is the legacy shared key only; a bearer header may be the legacy key or an agent token.
+  // Anything else (missing, wrong, expired, revoked) is a plain 404 so the endpoint stays unadvertised.
+  let auth = null;
+  if (!KEY) auth = LEGACY_AUTH;
+  else if (req.params.key !== undefined) auth = keyMatches(req.params.key) ? LEGACY_AUTH : null;
+  else auth = keyMatches(bearer) ? LEGACY_AUTH : tokens.verify(bearer);
+  if (!auth) return res.status(404).json({ error: 'not found' });
   try {
-    const server = buildServer();
+    const server = buildServer(auth);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     res.on('close', () => { try { transport.close(); server.close(); } catch (_) {} });
     await server.connect(transport);

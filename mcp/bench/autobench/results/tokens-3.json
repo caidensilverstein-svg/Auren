@@ -1,0 +1,108 @@
+{
+ "summary": {
+  "playwright_core": "1.64.1",
+  "pages": 7,
+  "tokens_est": "chars/4",
+  "chars": {
+   "auren_interactive": 41462,
+   "auren_full": 31413,
+   "playwright": 581772,
+   "dom": 3143401
+  },
+  "ratio_playwright_over_auren_interactive": 14,
+  "ratio_playwright_over_auren_full": 18.52,
+  "actionable_elements": {
+   "auren_listed": 329,
+   "auren_omitted_by_cap": 1149,
+   "playwright_refs": 6325
+  },
+  "chars_per_element": {
+   "auren": 126,
+   "playwright": 92
+  },
+  "excluded_pages": 1
+ },
+ "rows": [
+  {
+   "url": "https://en.wikipedia.org/wiki/Web_browser",
+   "auren_interactive": 7430,
+   "auren_items": 64,
+   "auren_more": 418,
+   "auren_full": 7502,
+   "dom": 613783,
+   "playwright": 134983,
+   "playwright_refs": 993
+  },
+  {
+   "url": "https://news.ycombinator.com/",
+   "auren_interactive": 3798,
+   "auren_items": 30,
+   "auren_more": 201,
+   "auren_full": 7316,
+   "dom": 35984,
+   "playwright": 49371,
+   "playwright_refs": 620
+  },
+  {
+   "url": "https://github.com/microsoft/playwright",
+   "auren_interactive": 6860,
+   "auren_items": 62,
+   "auren_more": 91,
+   "auren_full": 265,
+   "dom": 515967,
+   "playwright": 74010,
+   "playwright_refs": 856
+  },
+  {
+   "url": "https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API",
+   "auren_interactive": 7533,
+   "auren_items": 61,
+   "auren_more": 279,
+   "auren_full": 7620,
+   "dom": 72075,
+   "playwright": 123717,
+   "playwright_refs": 1778
+  },
+  {
+   "url": "https://www.bbc.com/news",
+   "auren_interactive": 7550,
+   "auren_items": 61,
+   "auren_more": 23,
+   "auren_full": 265,
+   "dom": 357095,
+   "playwright": 48900,
+   "playwright_refs": 523
+  },
+  {
+   "url": "https://www.theguardian.com/international",
+   "auren_interactive": 7519,
+   "auren_items": 45,
+   "auren_more": 137,
+   "auren_full": 7524,
+   "dom": 1378556,
+   "playwright": 149538,
+   "playwright_refs": 1537
+  },
+  {
+   "url": "https://stackoverflow.com/questions/11227809/why-is-processing-a-sorted-array-faster-than-processing-an-unsorted-array",
+   "auren_interactive": 249,
+   "auren_items": 0,
+   "auren_more": 0,
+   "auren_full": 240,
+   "dom": null,
+   "playwright": 1022,
+   "playwright_refs": 14
+  },
+  {
+   "url": "https://www.reddit.com/r/programming/",
+   "auren_interactive": 772,
+   "auren_items": 6,
+   "auren_more": 0,
+   "auren_full": 921,
+   "dom": 169941,
+   "playwright": 1253,
+   "playwright_refs": 18
+  }
+ ],
+ "when": "2026-10-22T03:43:33.556Z"
+}

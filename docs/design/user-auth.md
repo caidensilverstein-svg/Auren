@@ -1,6 +1,19 @@
 # User authentication and multi-user design (proposal)
 
-Status: proposal, nothing implemented. Written 2026-10-21 against `mcp/index.js` on `main`.
+Status: **steps 1-2 of the migration are implemented** (2026-10-22): `mcp/lib/auth.js`, `mcp/bin/auren-token.js`, scope
+enforcement and per-token rate limits and audit rows in `mcp/index.js`, 5 e2e tests in `mcp/test/e2e.test.js`. Steps 3-6 are
+still proposals. Written 2026-10-21 against `mcp/index.js` on `main`.
+
+Decisions made while implementing (change them if you disagree):
+* The legacy shared key maps to user `owner` with scope `settings` (everything it could do before, so no connector breaks).
+  Set `AUREN_LEGACY_SCOPE=act` to stop it filing permission/preference requests; the design's `act` default can be adopted
+  once the connector uses a token.
+* The `settings` scope exists: it only lets a token *file requests* (`browser_set_permission`, `browser_set_preference`);
+  approving them still needs the admin secret, which no agent credential can use.
+* `browser_scroll` and `browser_select_tab` are `read`: they change the view, not the page's state.
+* Unknown tools need `settings` (fail closed).
+* Tokens live in `~/.auren/auth.db` (separate from history), `aur_` + 256 random bits, only `sha256` stored.
+  `auren-token mint|list|revoke`. Missing/wrong/expired/revoked all return the same 404.
 
 ## Where we are
 
