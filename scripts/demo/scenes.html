@@ -167,7 +167,10 @@ scene('bench', 12000, t => {
     <div class="abs" style="left:48px;top:44px"><div class="tag">Automation</div><div class="h2" style="margin-top:6px">Auren-Bench: the tool layer found its own bugs</div></div>
     ${grid(B.before.results, 160, `Before: ${B.before.pass} pass, ${B.before.js || 0} only via raw JavaScript, ${B.tasks - B.before.pass - (B.before.js || 0)} fail`, '#e0675a', 400)}
     ${grid(B.after.results, 330, `After: ${B.after.pass} of ${B.tasks} tasks`, 'var(--green)', 4600)}
-    <div class="abs sub" style="left:48px;top:500px;width:1180px;opacity:${ease((t - 8200) / 800)}">Labelled fields had no names. Shadow DOM and iframes were invisible. A native dialog hung the call. Hash links waited 15 s. Each failure is now a regression test: ${B.e2e} end-to-end tests pass.</div>`,
+    <div class="abs sub" style="left:48px;top:480px;width:1180px;font-size:19px;opacity:${ease((t - 8200) / 800)}">Labelled fields had no names. Shadow DOM and iframes were invisible. A native dialog hung the call. Hash links waited 15 s. Each failure is now a regression test: ${B.e2e} end-to-end tests pass.</div>
+    <div class="abs card" style="left:48px;top:575px;width:1184px;padding:14px 26px;font-size:21px;opacity:${ease((t - 9400) / 800)}">
+      ${B.on_auren != null ? `<span class="gold"><b>${B.on_auren} of ${B.tasks}</b></span> <span class="mut">on the real Auren browser on the Mac.</span> &nbsp;` : ''}
+      ${B.realworld ? `<span class="gold"><b>${B.realworld.after} of ${B.realworld.total}</b></span> <span class="mut">real-site tasks (was ${B.realworld.before})${B.realworld.hop ? `; over the Oracle to Mac hop: ${B.realworld.hop_pass} of ${B.realworld.total}, snapshot ${B.realworld.hop.snapshot_ms.p50} ms` : ''}.</span>` : ''}</div>`,
     t, d, 'node mcp/bench/autobench/run.js', 'deterministic fixture sites; success = server-side goal state');
 });
 

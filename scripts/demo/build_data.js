@@ -47,7 +47,9 @@ try { for (const d of fs.readdirSync(AG).sort()) { const e = read(path.join(AG, 
 
 // ---- bench ---------------------------------------------------------------------------------------------------------
 const bb = read(path.join(BN, 'before.json')), ba = read(path.join(BN, 'after.json'));
-const bench = bb && ba && { tasks: ba.results.length, e2e: +arg('--e2e', 0), before: { pass: bb.summary.pass, js: bb.summary.js_only, results: bb.results.map(r => r.status === 'pass' ? 'pass' : r.status === 'js-only' ? 'js' : 'fail') }, after: { pass: ba.summary.pass, js: ba.summary.js_only, results: ba.results.map(r => r.status === 'pass' ? 'pass' : r.status === 'js-only' ? 'js' : 'fail') } };
+const onAuren = read(path.join(R, 'mac/bench/auren-mac-dev.json'));
+const rw = read(path.join(BN, 'realworld-oracle-to-mac-auren.json')), rwb = read(path.join(BN, 'realworld-before.json')), rwa = read(path.join(BN, 'realworld-after.json'));
+const bench = bb && ba && { tasks: ba.results.length, e2e: +arg('--e2e', 0), on_auren: onAuren ? onAuren.summary.pass : null, realworld: rwa ? { before: rwb?.pass ?? null, after: rwa.pass, total: rwa.total, hop: rw?.hop ?? null, hop_pass: rw?.pass ?? null } : null, before: { pass: bb.summary.pass, js: bb.summary.js_only, results: bb.results.map(r => r.status === 'pass' ? 'pass' : r.status === 'js-only' ? 'js' : 'fail') }, after: { pass: ba.summary.pass, js: ba.summary.js_only, results: ba.results.map(r => r.status === 'pass' ? 'pass' : r.status === 'js-only' ? 'js' : 'fail') } };
 
 // ---- tokens --------------------------------------------------------------------------------------------------------
 const tf = latest(BN, /^tokens-\d+\.json$/);

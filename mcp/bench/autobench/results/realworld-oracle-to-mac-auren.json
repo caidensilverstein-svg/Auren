@@ -1,0 +1,71 @@
+{
+ "label": "oracle-to-mac-auren",
+ "pass": 6,
+ "total": 6,
+ "rows": [
+  {
+   "name": "example.org: follow the \"Learn more\" link to iana.org",
+   "ok": true,
+   "error": null,
+   "calls": 3,
+   "chars": 3120,
+   "ms": 4705
+  },
+  {
+   "name": "wikipedia: search for \"Alan Turing\", open the article",
+   "ok": true,
+   "error": null,
+   "calls": 4,
+   "chars": 13348,
+   "ms": 10676
+  },
+  {
+   "name": "hacker news: open the comments of the first story",
+   "ok": true,
+   "error": null,
+   "calls": 4,
+   "chars": 8067,
+   "ms": 5281
+  },
+  {
+   "name": "github: open microsoft/playwright, go to Issues",
+   "ok": true,
+   "error": null,
+   "calls": 3,
+   "chars": 14451,
+   "ms": 9886
+  },
+  {
+   "name": "mdn: open the Fetch API page, jump to a section link",
+   "ok": true,
+   "error": null,
+   "calls": 2,
+   "chars": 8227,
+   "ms": 4377
+  },
+  {
+   "name": "duckduckgo: type a query into the search box and submit",
+   "ok": true,
+   "error": null,
+   "calls": 4,
+   "chars": 12520,
+   "ms": 8400
+  }
+ ],
+ "hop": {
+  "get_tabs_ms": {
+   "p50": 20,
+   "p95": 24
+  },
+  "snapshot_ms": {
+   "p50": 27,
+   "p95": 50
+  },
+  "find_ms": {
+   "p50": 45,
+   "p95": 70
+  }
+ },
+ "cdp": "10.8.0.3:9229",
+ "when": "2026-10-22T04:23:08.997Z"
+}

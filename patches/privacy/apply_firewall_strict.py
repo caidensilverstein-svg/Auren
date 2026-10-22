@@ -52,4 +52,34 @@ edit('''  if (allow) {
   return IsAurenBlockedServiceHost(request.url.host());
 }''',
      marker="AUREN_FIREWALL_STRICT: would block")
+# The network service is a separate process and never receives custom command-line switches, so neither the strict switch nor the
+# original --auren-allow-service-requests escape hatch could work from the command line (found by the strict-mode test on
+# 2026-10-22: with the switch given, the strict branch never ran). Environment variables are inherited by child processes.
+edit('#include "base/command_line.h"\n',
+     '#include "base/command_line.h"\n#include "base/environment.h"\n',
+     marker='#include "base/environment.h"')
+edit('''  static const bool allow = base::CommandLine::ForCurrentProcess()->HasSwitch(
+      "auren-allow-service-requests");''',
+     '''  static const bool allow =
+      base::CommandLine::ForCurrentProcess()->HasSwitch(
+          "auren-allow-service-requests") ||
+      base::Environment::Create()->HasVar("AUREN_ALLOW_SERVICE_REQUESTS");''',
+     marker='HasVar("AUREN_ALLOW_SERVICE_REQUESTS")')
+edit('''  static const bool strict = base::CommandLine::ForCurrentProcess()->HasSwitch(
+      "auren-firewall-strict");''',
+     '''  static const bool strict =
+      base::CommandLine::ForCurrentProcess()->HasSwitch(
+          "auren-firewall-strict") ||
+      base::Environment::Create()->HasVar("AUREN_FIREWALL_STRICT");''',
+     marker='HasVar("AUREN_FIREWALL_STRICT")')
+# say what was blocked (path and, for Google update traffic, which app id), so the caller can be identified
+edit('''    LOG(WARNING) << "AUREN_FIREWALL: blocked browser-process request to "
+                 << resource_request.url.host();''',
+     '''    std::optional<std::string> auren_app_id =
+        resource_request.headers.GetHeader("X-Goog-Update-AppId");
+    LOG(WARNING) << "AUREN_FIREWALL: blocked browser-process request to "
+                 << resource_request.url.host()
+                 << resource_request.url.path_piece()
+                 << (auren_app_id ? " app-id=" + *auren_app_id : "");''',
+     marker="auren_app_id")
 open(p, "w").write(s)

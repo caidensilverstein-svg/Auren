@@ -8,7 +8,7 @@ import { startHarness } from './autobench/harness.js';
 const argv = process.argv.slice(2);
 const arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const H = await startHarness();
+const H = await startHarness({ cdp: arg('--cdp') });
 const href = async () => JSON.parse(await H.call('browser_execute_js', { code: 'location.href' }));
 const act = (find, action = 'click', value) => H.call('browser_act', { find, action, ...(value !== undefined ? { value } : {}) });
 const settle = () => sleep(1800);
@@ -42,7 +42,15 @@ for (const t of TASKS) {
   rows.push({ name: t.name, ok, error, calls: H.meter.calls, chars: H.meter.chars, ms: Math.round(performance.now() - t0) });
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${String(H.meter.calls).padStart(2)} calls ${String(Math.round(performance.now() - t0)).padStart(6)} ms  ${t.name}${error ? '  !! ' + error : ''}`);
 }
+// latency over whatever link sits between the MCP server and the browser (the Oracle -> Mac WireGuard hop when run on Oracle)
+let hop = null;
+if (argv.includes('--hop')) {
+  await H.newTab(); await H.call('browser_navigate', { url: 'https://example.org/' });
+  const times = (n, fn) => Promise.resolve().then(async () => { const a = []; for (let i = 0; i < n; i++) { const t = performance.now(); await fn(); a.push(performance.now() - t); } a.sort((x, y) => x - y); return { p50: Math.round(a[Math.floor(n * 0.5)]), p95: Math.round(a[Math.min(n - 1, Math.floor(n * 0.95))]) }; });
+  hop = { get_tabs_ms: await times(20, () => H.call('browser_get_tabs')), snapshot_ms: await times(20, () => H.call('browser_snapshot')), find_ms: await times(20, () => H.call('browser_find', { query: 'More information' })) };
+  console.log('latency (ms, p50/p95):', JSON.stringify(hop));
+}
 const pass = rows.filter(r => r.ok).length;
 console.log(`${arg('--label', 'run')}: ${pass}/${rows.length} real-site tasks passed`);
-if (arg('--json')) fs.writeFileSync(arg('--json'), JSON.stringify({ label: arg('--label', 'run'), pass, total: rows.length, rows, when: new Date().toISOString() }, null, 1));
+if (arg('--json')) fs.writeFileSync(arg('--json'), JSON.stringify({ label: arg('--label', 'run'), pass, total: rows.length, rows, hop, cdp: arg('--cdp') || 'local headless chrome', when: new Date().toISOString() }, null, 1));
 await H.close(); process.exit(0);
