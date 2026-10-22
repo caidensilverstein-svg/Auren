@@ -1,5 +1,10 @@
 # Privacy work: status (2026-10-22)
 
+**Late update:** PR #21 is merged to main and the MCP server is deployed to Oracle (`ec45ed8`, health ok, 22 tools; backup
+`~/backups/auren-mcp-20261022-120406`). The release-flavour build (`out/auren-fast`, 59,248 steps, 6h37) completed, but on it Auren-Bench scored 0 of 17
+and the Tor retest failed, both with `Page.navigate` timeouts, while the dev build passes the same bench 17 of 17; only its startup (947 ms median) was
+measured. The cause is undiagnosed (the Mac was shut down). The release binary also predates the `OptimizationGuideOnDeviceModel` fix. Treat it as untested.
+
 Everything below was measured on the Mac on 2026-10-22 against a **dev build** (`out/auren`: component build, DCHECKs on). Files named in
 brackets are the evidence. Anything not measured is listed at the end.
 

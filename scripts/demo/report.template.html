@@ -158,7 +158,7 @@ const cards = [];
 // Speed
 {
   const S = D.speed;
-  const rows = S.rows.map(r => `<tr><td>${esc(r.label)}<div class="mut" style="font-size:12px">${esc(r.unit)}</div></td>${r.values.map((v, j) => `<td class="num" style="${r.best === j ? 'color:var(--gold);font-weight:600' : ''}">${v == null ? '<span class="mut">building</span>' : f1(v)}</td>`).join('')}</tr>`).join('');
+  const rows = S.rows.map(r => `<tr><td>${esc(r.label)}<div class="mut" style="font-size:12px">${esc(r.unit)}</div></td>${r.values.map((v, j) => `<td class="num" style="${r.best === j ? 'color:var(--gold);font-weight:600' : ''}">${v == null ? '<span class="mut">not measured</span>' : f1(v)}</td>`).join('')}</tr>`).join('');
   cards.push(`<div class="card" style="grid-column:1/-1"><h3>Speed</h3><h2>${esc(D.speedHeadline)}</h2>
     <div class="scroll"><table><thead><tr><th></th>${S.cols.map(c => `<th class="num">${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
     <p class="note">${esc(D.speedNote)}</p><div class="src">scripts/perf/run.js · one machine, back to back, fresh profiles</div></div>`);
