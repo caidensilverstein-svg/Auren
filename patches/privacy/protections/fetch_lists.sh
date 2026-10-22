@@ -13,7 +13,19 @@ ublock-privacy.txt|$B/privacy.min.txt|uBlock filters - Privacy|GPL-3.0-or-later
 ublock-unbreak.txt|$B/unbreak.min.txt|uBlock filters - Unbreak|GPL-3.0-or-later
 ublock-badware.txt|$B/badware.min.txt|uBlock filters - Badware risks|GPL-3.0-or-later
 brave-unbreak.txt|https://raw.githubusercontent.com/brave/adblock-lists/master/brave-unbreak.txt|Brave Unbreak|MPL-2.0
-peterlowe-hosts.txt|https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=0&mimetype=plaintext|Peter Lowe's ad server list|free use"
+peterlowe-hosts.txt|https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=0&mimetype=plaintext|Peter Lowe's ad server list|free use
+brave-specific.txt|https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-specific.txt|Brave specific|MPL-2.0
+brave-firstparty.txt|https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-firstparty.txt|Brave first-party|MPL-2.0
+brave-firstparty-cname.txt|https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-firstparty-cname.txt|Brave first-party CNAME|MPL-2.0
+brave-social.txt|https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-social.txt|Brave social|MPL-2.0
+brave-sugarcoat.txt|https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-sugarcoat.txt|Brave sugarcoat|MPL-2.0
+brave-cookie-specific.txt|https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-cookie-specific.txt|Brave cookie specific|MPL-2.0
+brave-checks.txt|https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-checks.txt|Brave checks|MPL-2.0
+brave-pageview.txt|https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-pageview.txt|Brave pageview|MPL-2.0
+debounce.json|https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/debounce.json|Debounce rules (redirect trackers)|MPL-2.0
+clean-urls.json|https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/clean-urls.json|Clean URLs (tracking parameters)|MPL-2.0
+clean-urls-permissions.json|https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/clean-urls-permissions.json|Clean URLs permissions|MPL-2.0
+query-filter.json|https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/query-filter.json|Query filter|MPL-2.0"
 case "${1:-verify}" in
 update)
   mkdir -p lists
@@ -24,7 +36,7 @@ for line in sys.argv[1].splitlines():
     f, url, title, lic = line.split("|")
     subprocess.run(["curl", "-sfL", "-m", "180", "-o", "lists/" + f, url], check=True)
     data = open("lists/" + f, "rb").read()
-    out.append({"file": f, "url": url, "title": title, "license": lic, "bytes": len(data),
+    out.append({"file": f, "kind": "data" if f.endswith(".json") else "list", "url": url, "title": title, "license": lic, "bytes": len(data),
                 "sha256": hashlib.sha256(data).hexdigest()})
 json.dump({"fetched": datetime.date.today().isoformat(), "lists": out}, open("manifest.json", "w"), indent=1)
 print("pinned", len(out), "lists,", sum(o["bytes"] for o in out), "bytes")

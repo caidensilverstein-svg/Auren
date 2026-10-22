@@ -25,8 +25,12 @@ subprocess.run([os.path.join(here, "fetch_lists.sh"), "verify"], check=True, cwd
 manifest = json.load(open(os.path.join(here, "manifest.json")))
 
 
-def ident(f):
-    return "IDR_AUREN_LIST_" + re.sub(r"[^A-Z0-9]", "_", os.path.splitext(f)[0].upper())
+def ident(f, kind="list"):
+    return "IDR_AUREN_%s_" % kind.upper() + re.sub(r"[^A-Z0-9]", "_", os.path.splitext(f)[0].upper())
+
+
+def idr(f):
+    return ident(f, next(o.get("kind", "list") for o in manifest["lists"] if o["file"] == f))
 
 
 def edit(rel, old, new, marker):
@@ -63,7 +67,7 @@ for o in manifest["lists"]:
 
 # --- resources: one gzip BINDATA include per list ------------------------------------------------------------------
 includes = "".join(
-    f'      <include name="{ident(o["file"])}" file="../brave_shields/resources/protections/{o["file"]}" '
+    f'      <include name="{ident(o["file"], o.get("kind", "list"))}" file="../brave_shields/resources/protections/{o["file"]}" '
     f'type="BINDATA" compress="gzip" />\n' for o in manifest["lists"])
 edit("components/resources/brave_components_resources.grd",
      "      <!-- WebUI adblock resources -->\n",
@@ -119,7 +123,7 @@ class AdBlockBundledFiltersProvider : public AdBlockFiltersProvider {
 #endif  // BRAVE_COMPONENTS_BRAVE_SHIELDS_CONTENT_BROWSER_AD_BLOCK_BUNDLED_FILTERS_PROVIDER_H_
 """)
 
-ids = "".join(f"    {ident(o['file'])},\n" for o in manifest["lists"])
+ids = "".join(f"    {ident(o['file'])},\n" for o in manifest["lists"] if o.get("kind", "list") == "list")
 write(S + "ad_block_bundled_filters_provider.cc", HEADER + """
 #include "brave/components/brave_shields/content/browser/ad_block_bundled_filters_provider.h"
 
@@ -234,4 +238,73 @@ edit(S + "ad_block_service.cc",
      "  bundled_filters_provider_ = std::make_unique<AdBlockBundledFiltersProvider>(\n"
      "      filters_provider_manager_.get());\n",
      marker="bundled_filters_provider_ = std::make_unique")
+
+# --- data that Brave normally receives as components: debounce rules, URL cleaning, query filter -------------------
+# The component updater is off, so these would stay empty. Each hook loads the bundled copy through the same parser
+# the component path uses (DebounceComponentInstaller::OnDATFileDataReady, URLSanitizerComponentInstaller::
+# OnRawConfigReady, QueryFilterData::PopulateDataFromComponent).
+RB_INC = '#include "components/grit/brave_components_resources.h"\n#include "ui/base/resource/resource_bundle.h"\n'
+GRIT_DEP = '"//brave/components/resources:static_resources_grit",'
+
+D = "components/debounce/core/browser/"
+edit(D + "debounce_component_installer.cc",
+     '#include "brave/components/brave_component_updater/browser/local_data_files_service.h"\n',
+     '#include "brave/components/brave_component_updater/browser/local_data_files_service.h"\n' + RB_INC,
+     marker='#include "ui/base/resource/resource_bundle.h"')
+edit(D + "debounce_component_installer.cc",
+     "    : LocalDataFilesObserver(local_data_files_service) {}\n",
+     "    : LocalDataFilesObserver(local_data_files_service) {\n"
+     "  // Auren: rules shipped inside the app (no component updater). Observers added later read rules() on demand.\n"
+     "  OnDATFileDataReady(ui::ResourceBundle::GetSharedInstance().LoadDataResourceString(\n"
+     "      " + idr("debounce.json") + "));\n"
+     "}\n",
+     marker="OnDATFileDataReady(ui::ResourceBundle::GetSharedInstance()")
+edit(D + "BUILD.gn", '    "//brave/components/debounce/core/common",\n',
+     '    "//brave/components/debounce/core/common",\n    ' + GRIT_DEP + '\n', marker=GRIT_DEP)
+
+U = "components/url_sanitizer/core/browser/"
+edit(U + "url_sanitizer_component_installer.cc",
+     "using brave_component_updater::LocalDataFilesObserver;\n",
+     RB_INC + "\nusing brave_component_updater::LocalDataFilesObserver;\n",
+     marker='#include "ui/base/resource/resource_bundle.h"')
+edit(U + "url_sanitizer_component_installer.cc",
+     "    : LocalDataFilesObserver(local_data_files_service) {}\n",
+     "    : LocalDataFilesObserver(local_data_files_service) {\n"
+     "  // Auren: URL-cleaning rules shipped inside the app (no component updater). AddObserver() replays current_config_.\n"
+     "  auto& rb = ui::ResourceBundle::GetSharedInstance();\n"
+     "  RawConfig config;\n"
+     "  config.matchers = rb.LoadDataResourceString(" + idr("clean-urls.json") + ");\n"
+     "  config.permissions = rb.LoadDataResourceString(" + idr("clean-urls-permissions.json") + ");\n"
+     "  OnRawConfigReady(std::move(config));\n"
+     "}\n",
+     marker="OnRawConfigReady(std::move(config));\n}")
+edit(U + "BUILD.gn", '    "//brave/components/brave_component_updater/browser",\n    "//brave/extensions:common",\n    "//components/keyed_service/core",\n    "//net",\n    "//url",\n  ]\n}\n\nsource_set("unit_tests")',
+     '    "//brave/components/brave_component_updater/browser",\n    "//brave/extensions:common",\n    ' + GRIT_DEP + '\n    "//components/keyed_service/core",\n    "//net",\n    "//ui/base",\n    "//url",\n  ]\n}\n\nsource_set("unit_tests")',
+     marker=GRIT_DEP)
+
+Q = "components/query_filter/browser/"
+edit(Q + "query_filter_component_installer.cc",
+     '#include "components/component_updater/component_updater_service.h"\n',
+     '#include "components/component_updater/component_updater_service.h"\n' + RB_INC,
+     marker='#include "ui/base/resource/resource_bundle.h"')
+edit(Q + "query_filter_component_installer.cc",
+     """      !cus) {
+    return;
+  }
+
+  auto installer = base::MakeRefCounted<component_updater::ComponentInstaller>(""",
+     """      !cus) {
+    return;
+  }
+
+  // Auren: query-filter rules shipped inside the app (no component updater).
+  OnQueryFilterFileRead(base::Version("1.0.0"),
+                        ui::ResourceBundle::GetSharedInstance().LoadDataResourceString(
+                            """ + idr("query-filter.json") + """));
+
+  auto installer = base::MakeRefCounted<component_updater::ComponentInstaller>(""",
+     marker="Auren: query-filter rules shipped inside the app")
+edit(Q + "BUILD.gn", '    "//brave/components/query_filter/common/internal",\n    "//components/url_pattern_index",\n',
+     '    "//brave/components/query_filter/common/internal",\n    ' + GRIT_DEP + '\n    "//components/url_pattern_index",\n    "//ui/base",\n',
+     marker=GRIT_DEP)
 print("done")
