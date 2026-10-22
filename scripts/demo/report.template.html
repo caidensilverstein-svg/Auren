@@ -1,0 +1,171 @@
+<title>Auren Night Report</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column. Verdict and video first, then what needs a decision, then four result cards, then the evidence ledger. */
+:root{
+  --bg:#f3f4f8; --surface:#ffffff; --ink:#15151c; --mut:#5a5a69; --line:#d8d9e3;
+  --gold:#7d5f0e; --gold-fill:#c9a84c; --good:#1c7448; --bad:#b0352a; --warn:#7d5f0e; --cell:#e4e5ee;
+  --serif:'Instrument Serif',Georgia,'Times New Roman',serif; --sans:'Instrument Sans',system-ui,-apple-system,'Segoe UI',sans-serif; --mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0a0a0f; --surface:#111118; --ink:#ece8dc; --mut:#8f8f9f; --line:#2a2a36;
+  --gold:#c9a84c; --gold-fill:#c9a84c; --good:#4fae7b; --bad:#e0675a; --warn:#c9a84c; --cell:#1c1c27; color-scheme:dark; } }
+:root[data-theme="dark"]{
+  --bg:#0a0a0f; --surface:#111118; --ink:#ece8dc; --mut:#8f8f9f; --line:#2a2a36;
+  --gold:#c9a84c; --gold-fill:#c9a84c; --good:#4fae7b; --bad:#e0675a; --warn:#c9a84c; --cell:#1c1c27; color-scheme:dark; }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 var(--sans);padding-block:0 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1040px;margin:0 auto}
+header{padding-top:40px}
+.eyebrow{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
+h1{font:400 clamp(40px,7vw,68px)/1.02 var(--serif);letter-spacing:-.01em;margin:14px 0 14px;text-wrap:balance}
+h2{font:400 32px/1.1 var(--serif);margin:0 0 6px;text-wrap:balance}
+h3{font:600 13px/1.3 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--gold);margin:0 0 10px}
+p{margin:0 0 12px;max-width:68ch}
+.lead{font-size:19px;color:var(--ink);max-width:62ch}
+.mut{color:var(--mut)}
+section{margin-top:44px}
+.video{margin-top:26px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#000}
+.video video{display:block;width:100%;height:auto;max-height:70vh;background:#000}
+.cap{font:12px/1.4 var(--mono);color:var(--mut);margin-top:8px}
+.needs{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:6px 22px}
+.need{display:grid;grid-template-columns:34px 1fr;gap:4px 14px;padding:18px 0;border-bottom:1px solid var(--line)}
+.need:last-child{border-bottom:0}
+.need .n{font:400 30px/1 var(--serif);color:var(--gold)}
+.need b{font-weight:600}
+.need a{color:var(--gold)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+@media (max-width:760px){.grid{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px 22px 18px;min-width:0}
+.kpis{display:flex;flex-wrap:wrap;gap:14px 26px;margin:14px 0 12px}
+.kpi{min-width:0}
+.kpi .v{font:600 30px/1.05 var(--mono);letter-spacing:-.02em}
+.kpi .v small{font:400 13px var(--mono);color:var(--mut);letter-spacing:0}
+.kpi .l{font-size:13px;color:var(--mut);max-width:20ch;margin-top:2px}
+.good{color:var(--good)} .bad{color:var(--bad)} .gold{color:var(--gold)}
+.note{font-size:14px;color:var(--mut);margin-top:10px}
+.src{font:11.5px/1.5 var(--mono);color:var(--mut);margin-top:10px;overflow-wrap:anywhere}
+svg{display:block;max-width:100%;height:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{font:600 11.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--mut);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+td.f{font:12px/1.4 var(--mono);color:var(--mut);overflow-wrap:anywhere}
+.scroll{overflow-x:auto}
+.pill{display:inline-block;font:600 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:99px;border:1px solid currentColor}
+.cells{display:flex;gap:4px;flex-wrap:wrap}
+.cells i{display:block;width:calc((100% - 16*4px)/17);min-width:14px;aspect-ratio:1;border-radius:4px;background:var(--cell)}
+.ledger td:first-child{max-width:46ch}
+footer{margin-top:48px;font-size:13px;color:var(--mut);max-width:70ch}
+footer a,.card a{color:var(--gold)}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow" id="eyebrow"></div>
+  <h1>Auren night report</h1>
+  <p class="lead" id="lead"></p>
+  <div class="video"><video id="vid" controls preload="metadata" playsinline poster="poster.jpg"><source src="auren-demo.mp4" type="video/mp4"></video></div>
+  <div class="cap" id="vidcap"></div>
+</header>
+
+<section>
+  <h2>What needs you</h2>
+  <p class="mut">Everything else finished or is waiting on a build. These four need a decision or an approval I do not have.</p>
+  <div class="needs" id="needs"></div>
+</section>
+
+<section>
+  <h2>Results</h2>
+  <p class="mut">Measured on your Mac and the laptop last night. The Mac build is a dev build (component build, DCHECKs on), so absolute speed is not representative yet; the privacy and automation numbers are.</p>
+  <div class="grid" id="cards"></div>
+</section>
+
+<section>
+  <h2>Evidence ledger</h2>
+  <div class="card scroll"><table class="ledger"><thead><tr><th>Claim</th><th class="num">Result</th><th>Where it came from</th></tr></thead><tbody id="ledger"></tbody></table></div>
+</section>
+
+<section>
+  <h2>Not verified</h2>
+  <div class="card"><ul id="unverified" style="margin:0;padding-left:20px"></ul></div>
+</section>
+
+<footer id="foot"></footer>
+</div>
+
+<script>
+const D = /*__DATA__*/null;
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = n => n == null ? 'n/a' : Math.round(n).toLocaleString('en-US');
+const f1 = n => n == null ? 'n/a' : (+n).toLocaleString('en-US', { maximumFractionDigits: 1 });
+
+$('eyebrow').textContent = 'Auren · night of ' + D.dates;
+$('lead').innerHTML = D.lead;
+$('vidcap').textContent = D.videoCaption;
+
+// --- decisions ---------------------------------------------------------------------------------------------------
+$('needs').innerHTML = D.needs.map((n, i) => `<div class="need"><div class="n">${i + 1}</div><div><b>${n.title}</b><p class="mut" style="margin:4px 0 0">${n.body}</p></div></div>`).join('');
+
+// --- small charts ------------------------------------------------------------------------------------------------
+function stack(label, v, total, color) { return `<div style="display:flex;align-items:center;gap:10px;margin:6px 0"><div style="width:62px;font:12px var(--mono);color:var(--mut)">${label}</div><div style="flex:1;display:flex;height:22px;border-radius:5px;overflow:hidden;background:var(--cell)">${v.map(x => `<div title="${x.n} ${x.k}" style="width:${x.n / total * 100}%;background:${x.c}"></div>`).join('')}</div></div>`; }
+function cells(res) { return `<div class="cells">${res.map(r => `<i title="${r}" style="background:${r === 'pass' ? 'var(--good)' : r === 'js' ? 'var(--gold-fill)' : 'var(--bad)'}"></i>`).join('')}</div>`; }
+function bars(rows, max, unit) { return rows.map(r => `<div style="display:flex;align-items:center;gap:10px;margin:5px 0;font-size:13px"><div style="width:122px;font:12px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.label)}</div><div style="flex:1;height:14px;background:var(--cell);border-radius:4px;position:relative"><div style="position:absolute;inset:0 auto 0 0;width:${r.v / max * 100}%;background:${r.color || 'var(--gold-fill)'};border-radius:4px"></div></div><div style="width:84px;text-align:right;font:12px var(--mono)">${r.text}</div></div>`).join(''); }
+const kpi = (v, l, cls) => `<div class="kpi"><div class="v ${cls || ''}">${v}</div><div class="l">${l}</div></div>`;
+
+const cards = [];
+// Zero Brave
+{
+  const n = D.netlog, fw = D.firewall, z = D.zero_brave;
+  const brave = n.before.hosts.filter(h => h.class !== 'allowlisted');
+  cards.push(`<div class="card"><h3>Zero Brave</h3><h2>No Brave host on the wire at idle</h2>
+    <div class="kpis">${kpi(`${n.before.unexpected} → ${(D.idle15 || n.after).unexpected}`, 'unexpected hosts in an idle capture, before and after', 'good')}${kpi(fmt(brave.reduce((a, h) => a + h.requests, 0)) + ' → 0', 'requests to Brave hosts', 'good')}${z ? kpi(fmt(z.distinct), `vendor host strings still compiled in (${z.brave_family} Brave)`, 'gold') : ''}</div>
+    <p>Before: ${brave.map(h => `<span class="mono">${esc(h.host)}</span> (${h.requests})`).join(', ')}. After: only DNS-over-HTTPS${D.idle15 ? ` over ${D.idle15.minutes || 15} minutes` : ' over 7 minutes'}.</p>
+    <p class="note">A blocked request never reaches the netlog, so a clean netlog is the gating plus the firewall. ${fw.attempts_blocked.length ? `The firewall caught ${fw.attempts_blocked.reduce((a, x) => a + x.n, 0)} browser-process attempts while the settings pages opened (${fw.attempts_blocked.map(x => esc(x.what)).join(', ')}).` : ''} The compiled-in strings are blocked at run time, not removed.</p>
+    <div class="src">scripts/telemetry-audit/netlog_audit.py · scripts/privacy/zero_brave.py</div></div>`);
+}
+// Protection
+{
+  const P = D.prot, S = D.surface, F = D.fingerprint, U = D.urlrules;
+  const top = P.rows.slice(0, 6);
+  cards.push(`<div class="card"><h3>Protection</h3><h2>Blocking, inside the app</h2>
+    <div class="kpis">${kpi(`${P.total_blocked}<small> / ${fmt(P.total_requests)}</small>`, `requests blocked on ${P.pages} real pages; stock Chrome 0`, 'gold')}${U ? kpi(`${U.pass}<small> / ${U.total}</small>`, 'tracker redirect and tracking-parameter rules fire', 'good') : ''}${S ? kpi(`${S.removed.length}`, 'ad-tech and device APIs absent that Chrome exposes', 'good') : ''}</div>
+    ${bars(top.map(r => ({ label: r.site, v: r.blocked, text: r.blocked + ' / ' + r.requests })), Math.max(...top.map(r => r.blocked), 1))}
+    <p class="note">${P.lists} filter lists, redirect-tracker (debounce) rules and tracking-parameter rules ship inside the binary, pinned by hash; the browser downloads nothing. The updater being off had silently removed all of them.</p>
+    <div class="src">${esc(P.source)} · scripts/privacy/{protections_check,url_rules_check,api_surface}.js · patches/privacy/protections</div></div>`);
+  if (F) cards.push(`<div class="card"><h3>Fingerprint</h3><h2>${F.before.fail} failing checks became ${F.after.fail}</h2>
+    <div class="kpis">${kpi(`${F.before.fail} → ${F.after.fail}`, 'FAIL, same harness and policy', 'good')}${kpi(`${F.after.pass}`, `PASS (was ${F.before.pass})`, 'good')}${kpi(`${F.constant_surfaces}<small> / ${F.surfaces}</small>`, 'surfaces identical across sites and sessions')}</div>
+    <div style="margin-top:8px">${stack('before', [{ n: F.before.fail, k: 'fail', c: 'var(--bad)' }, { n: F.before.warn, k: 'warn', c: 'var(--gold-fill)' }, { n: F.before.pass, k: 'pass', c: 'var(--good)' }], F.before.fail + F.before.warn + F.before.pass)}${stack('after', [{ n: F.after.fail, k: 'fail', c: 'var(--bad)' }, { n: F.after.warn, k: 'warn', c: 'var(--gold-fill)' }, { n: F.after.pass, k: 'pass', c: 'var(--good)' }], F.after.fail + F.after.warn + F.after.pass)}</div>
+    <p class="note">Still failing: battery API, <span class="mono">mediaDevices</span> unstable on reload, per-site values inside workers. Six warnings are WebUSB, HID, Serial, Bluetooth, MIDI and sensors: your call (see above).</p>
+    <div class="src">${esc(F.after.source)} · docs/privacy/fingerprinting/post-results-2026-10-22.md</div></div>`);
+}
+// Automation
+{
+  const B = D.bench, T = D.tokens;
+  cards.push(`<div class="card"><h3>Automation</h3><h2>Auren-Bench: ${B.before.pass} of ${B.tasks} became ${B.after.pass}</h2>
+    <div class="kpis">${kpi(`${B.before.pass} → ${B.after.pass}<small> / ${B.tasks}</small>`, 'deterministic tasks, success read from the fixture server', 'good')}${B.on_auren != null ? kpi(`${B.on_auren}<small> / ${B.tasks}</small>`, 'on the real Auren browser, Mac', 'good') : ''}${B.realworld ? kpi(`${B.realworld.before} → ${B.realworld.after}<small> / ${B.realworld.total}</small>`, 'real public-site tasks', 'good') : ''}</div>
+    <div style="font:11px var(--mono);color:var(--mut);margin:8px 0 4px">before: ${B.before.pass} pass, ${B.before.js || 0} only via raw JavaScript (amber), ${B.tasks - B.before.pass - (B.before.js || 0)} fail</div>${cells(B.before.results)}
+    <div style="font:11px var(--mono);color:var(--mut);margin:10px 0 4px">after</div>${cells(B.after.results)}
+    ${T ? `<p class="note" style="margin-top:14px">What the model reads to see a page: about <b>${fmt(T.auren_avg_tokens)}</b> tokens against <b>${fmt(T.playwright_avg_tokens)}</b> for Playwright's AI snapshot (${T.ratio}× fewer characters on ${T.pages} real pages). The cap hides elements: ${fmt(T.omitted)} of ${fmt(T.omitted + T.listed)} were omitted, and every response says how many.</p>` : ''}
+    ${B.realworld && B.realworld.hop ? `<p class="note">Over the real Oracle → Mac WireGuard hop a snapshot takes ${B.realworld.hop.snapshot_ms.p50} ms (p95 ${B.realworld.hop.snapshot_ms.p95}).</p>` : ''}
+    <div class="src">mcp/bench/autobench · mcp/bench/realworld.js · mcp/bench/tokens.js · docs/perf/auren-bench.md</div></div>`);
+}
+// Speed
+{
+  const S = D.speed;
+  const rows = S.rows.map(r => `<tr><td>${esc(r.label)}<div class="mut" style="font-size:12px">${esc(r.unit)}</div></td>${r.values.map((v, j) => `<td class="num" style="${r.best === j ? 'color:var(--gold);font-weight:600' : ''}">${v == null ? '<span class="mut">building</span>' : f1(v)}</td>`).join('')}</tr>`).join('');
+  cards.push(`<div class="card" style="grid-column:1/-1"><h3>Speed</h3><h2>${esc(D.speedHeadline)}</h2>
+    <div class="scroll"><table><thead><tr><th></th>${S.cols.map(c => `<th class="num">${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="note">${esc(D.speedNote)}</p><div class="src">scripts/perf/run.js · one machine, back to back, fresh profiles</div></div>`);
+}
+$('cards').innerHTML = cards.join('');
+
+// --- ledger + unverified + footer -----------------------------------------------------------------------------------
+$('ledger').innerHTML = D.ledger.map(r => `<tr><td>${r.claim}</td><td class="num ${r.tone || ''}">${r.result}</td><td class="f">${esc(r.src)}</td></tr>`).join('');
+$('unverified').innerHTML = D.unverified.map(u => `<li style="margin:6px 0">${u}</li>`).join('');
+$('foot').innerHTML = D.footer;
+</script>

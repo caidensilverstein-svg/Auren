@@ -86,8 +86,26 @@ const surface = sa && sc && (() => {
     brands: [sc.apis['userAgentData brands'], sa.apis['userAgentData brands']] };
 })();
 
+// ---- fingerprint, zero-brave scan, firewall, Tor, unit tests ----------------------------------------------------------
+const fpDir = (() => { try { return fs.readdirSync(path.join(R, 'mac/fp-sel')).sort().pop(); } catch { return null; } })();
+const fpPost = fpDir && read(path.join(R, 'mac/fp-sel', fpDir, 'summary.json'));
+const fingerprint = fpPost && { before: { fail: 30, warn: 12, pass: 122, source: 'docs/privacy/fingerprinting/baseline-results.md (2026-10-20)' }, after: { fail: fpPost.totals.FAIL, warn: fpPost.totals.WARN, pass: fpPost.totals.PASS, source: 'fp-out-post/' + fpDir },
+  constant_surfaces: Object.values(fpPost.surfaces).filter(x => x.class === 'constant').length, surfaces: Object.keys(fpPost.surfaces).length };
+const zbj = read(path.join(R, 'mac/zb/zero-brave-N1-after.json'));
+const zero_brave = zbj && { distinct: zbj.distinct_vendor_hosts, invalid: zbj.distinct_invalid_hosts, files: zbj.files_scanned,
+  brave_family: Object.keys(zbj.vendor_hosts).filter(h => /(^|\.)brave\.com$|bravesoftware|brave\.software|basicattentiontoken/.test(h)).length };
+const txt = f => { try { return fs.readFileSync(path.join(R, f), 'utf8'); } catch { return null; } };
+const hostsOf = f => (txt(f) || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => { const m = l.match(/^(\d+)\s+AUREN_FIREWALL(?:_STRICT)?:\s*(.*)$/); return m ? { n: +m[1], what: m[2].replace(/^blocked browser-process request to /, '').replace(/^would block /, 'strict: ') } : null; }).filter(Boolean);
+const firewall = { attempts_blocked: hostsOf('mac/strict/strict-test-hosts.txt'), strict_env: hostsOf('mac/strict/strict2-hosts.txt') };
+const tor = read(path.join(R, 'mac/tor-smoke.json'));
+const utTxt = txt('mac/ut-tor.txt');
+const unit = utTxt && { passed: +(utTxt.match(/\[  PASSED  \] (\d+) test/)?.[1] ?? 0), failed: +(utTxt.match(/(\d+) FAILED TEST/)?.[1] ?? 0), ran: +(utTxt.match(/\[==========\] (\d+) tests? from/)?.[1] ?? 0) };
+const n2 = read(path.join(R, 'mac/audit-N2-idle15.json'));
+const idle15 = n2 && { hosts: hosts(n2), unexpected: unexpected(hosts(n2)) };
+const urlrules = read(path.join(R, 'mac/urlrules/v3.json')) || read(path.join(R, 'mac/urlrules/v2.json'));
+
 const evidence = read(path.join(R, 'evidence.json')) || [{ tone: 'open', text: 'evidence.json not written yet' }];
-const data = { when: netlog.when, netlog, prot: protOut, surface, agent: { dir: AG, tasks }, bench, tokens, speed, evidence };
+const data = { when: netlog.when, netlog, idle15, prot: protOut, surface, fingerprint, zero_brave, firewall, tor, unit, urlrules, agent: { dir: AG, tasks }, bench, tokens, speed, evidence };
 fs.mkdirSync(path.dirname(arg('--out', '/tmp/auren-demo/data.json')), { recursive: true });
 fs.writeFileSync(arg('--out', '/tmp/auren-demo/data.json'), JSON.stringify(data, null, 1));
 const miss = Object.entries({ prot: protOut, bench, tokens, 'agent tasks': tasks.length }).filter(([, v]) => !v).map(([k]) => k);

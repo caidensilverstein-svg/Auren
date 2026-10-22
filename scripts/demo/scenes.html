@@ -124,18 +124,18 @@ scene('surface', 12000, t => {
 // 4 agent ----------------------------------------------------------------------------------------------------------
 function agentTimeline() {
   const A = DATA.agent; let at = 0; const segs = [];
-  for (const task of A.tasks) { const dur = 1400 + task.duration_ms + 900; segs.push({ task, start: at, dur }); at += dur; }
+  for (const task of A.tasks) { const dur = 900 + task.duration_ms + 900; segs.push({ task, start: at, dur }); at += dur; }
   return { segs, total: at };
 }
 scene('agent', () => agentTimeline().total, t => {
   const { segs, total } = agentTimeline();
   const seg = segs.find(s => t >= s.start && t < s.start + s.dur) || segs[segs.length - 1];
-  const lt = t - seg.start, task = seg.task, rt = clamp(lt - 1400, 0, task.duration_ms);
+  const lt = t - seg.start, task = seg.task, rt = clamp(lt - 900, 0, task.duration_ms);
   // frames before the first tool call are the blank starting tab: show nothing until the agent has loaded a page
   const firstCall = task.events.length ? task.events[0].t_ms : 0;
   const fr = [...task.frames].filter(f => f.t_ms <= rt && f.t_ms >= firstCall).pop() || null;
   const evs = task.events.filter(e => e.t_ms <= rt);
-  const img = !fr ? '<div class="mono mut" style="padding:20px;font-size:14px">about:blank</div>' : `<img src="file://${DATA.agent.dir}/${task.id}/${fr.file}" style="width:100%;height:100%;object-fit:contain;display:block;background:#111118">`;
+  const img = !fr ? '<div class="mono mut" style="padding:20px;font-size:14px">fresh tab</div>' : `<img src="file://${DATA.agent.dir}/${task.id}/${fr.file}" style="width:100%;height:100%;object-fit:contain;display:block;background:#111118">`;
   return frame(`
     <div class="abs" style="left:48px;top:30px"><div class="tag">Automation &middot; real tool calls, paced for viewing</div>
       <div class="h2" style="margin-top:4px;font-size:30px">${esc(task.id)} &nbsp;${esc(task.name)}</div></div>
@@ -150,7 +150,7 @@ scene('agent', () => agentTimeline().total, t => {
     </div>
     <div class="abs" style="left:48px;top:596px;width:1184px">
       ${segs.map((s, i) => `<span class="pill" style="margin-right:8px;background:${s === seg ? 'var(--gold)' : 'var(--s2)'};color:${s === seg ? '#111' : 'var(--mut)'}">${esc(s.task.id)}</span>`).join('')}
-      <span class="mut" style="margin-left:10px;font-size:16px">${seg.task.ok ? '<span class="green">passed: the fixture server recorded the goal state</span>' : '<span class="red">failed</span>'}</span></div>`,
+      <span class="mut" style="margin-left:10px;font-size:16px">${rt < task.duration_ms - 300 ? 'running...' : (seg.task.ok ? '<span class="green">passed: the fixture server recorded the goal state</span>' : '<span class="red">failed</span>')}</span></div>`,
     t, total, 'mcp/bench/autobench', '17 tasks, success checked server-side');
 });
 
