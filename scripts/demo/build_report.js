@@ -58,7 +58,7 @@ if (B.on_auren != null) L('Auren-Bench on the real Auren, Mac', `${B.on_auren} o
 if (B.realworld) { L('Real public-site tasks', `${B.realworld.before} → ${B.realworld.after} of ${B.realworld.total}`, 'realworld-{before,after}.json', 'good'); if (B.realworld.hop) L('Same tasks, server on Oracle, browser on the Mac', `${B.realworld.hop_pass} of ${B.realworld.total}; snapshot p50 ${B.realworld.hop.snapshot_ms.p50} ms`, 'realworld-oracle-to-mac-auren.json', 'good'); }
 L('End-to-end tests (mcp)', `25 → ${B.e2e}`, 'npm test in mcp/', 'good');
 if (T) L('Page representation, characters', `${T.ratio}× fewer than Playwright 1.64 AI snapshot`, `${T.source} (cap omits ${n(T.omitted)} elements; chars/4 estimate)`);
-if (D.tor) L('Tor window through the bundled Tor (macOS)', D.tor.isTor ? 'IsTor true' : 'IsTor false', 'tor-smoke.json', D.tor.isTor ? 'good' : 'bad');
+if (D.tor) L('Bundled Tor client inside the browser (macOS)', D.tor.answered ? (D.tor.isTor ? 'IsTor true' : 'IsTor false') : (D.tor.connected ? 'circuit view: Connected; IP check did not answer' : 'did not connect in the time allowed'), 'tor-smoke.json, tor-smoke-run1.json', D.tor.answered && D.tor.isTor ? 'good' : '');
 if (D.unit && D.unit.ran) L('Tor and tracker unit tests, real toolchain', `${D.unit.passed} of ${D.unit.ran} pass`, 'ut-tor.txt', D.unit.failed ? 'bad' : 'good');
 if (D.firewall.strict_env.length) L('Strict firewall, via environment variable', `${D.firewall.strict_env.reduce((a, x) => a + x.n, 0)} requests would be blocked`, 'strict/strict2-hosts.txt');
 L('Startup to first page, Mac', `${n(chrome('Startup to first page'))} ms Chrome · ${n(dev('Startup to first page'))} ms Auren dev${rel('Startup to first page') != null ? ' · ' + n(rel('Startup to first page')) + ' ms release' : ''}`, 'perf/out/*-startup.json');
@@ -67,6 +67,7 @@ L('Speedometer 3.1, Mac', `${(+chrome('Speedometer 3.1')).toFixed(1)} Chrome · 
 const U_ = x => data.unverified.push(x);
 if (!releaseDone) U_('Release-build speed and memory. The release flavour is still compiling; until it finishes the speed table compares stock Chrome with a dev build that has DCHECKs on.');
 if (!D.tor) U_('Tor on this Mac build. The smoke test was queued behind other work; the Tor circuit view and bridges are compile-checked only.');
+else if (!D.tor.answered) U_(`Tor end to end. The Tor window opens from the new-tab button and the client built circuits (${D.tor.connected ? 'circuit view showed Connected' + (D.tor.guard ? ', guard ' + D.tor.guard : '') : 'one run was still Starting'}), but check.torproject.org/api/ip never answered inside the time allowed while the Mac was saturated by the release build. Rerun <span class="mono">scripts/tor/tor_smoke.js</span> on an idle Mac.`);
 if (!(D.unit && D.unit.ran)) U_('Unit tests for the Tor client and tracker. The test binary was building; the host-side harness passes 14 of 14, but the real-toolchain tests had not run.');
 U_('The bridge settings dialog (obfs4, snowflake, meek, webtunnel). Verified end to end at the command level on Linux, never exercised in the Mac UI.');
 U_('Windows and macOS x86_64 Tor bundles were assembled and signature-checked but never run. Linux and Windows browser-side behaviour is untested.');

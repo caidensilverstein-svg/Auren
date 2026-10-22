@@ -97,11 +97,14 @@ const zero_brave = zbj && { distinct: zbj.distinct_vendor_hosts, invalid: zbj.di
 const txt = f => { try { return fs.readFileSync(path.join(R, f), 'utf8'); } catch { return null; } };
 const hostsOf = f => (txt(f) || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => { const m = l.match(/^(\d+)\s+AUREN_FIREWALL(?:_STRICT)?:\s*(.*)$/); return m ? { n: +m[1], what: m[2].replace(/^blocked browser-process request to /, '').replace(/^would block /, 'strict: ') } : null; }).filter(Boolean);
 const firewall = { attempts_blocked: hostsOf('mac/strict/strict-test-hosts.txt'), strict_env: hostsOf('mac/strict/strict2-hosts.txt') };
-const torRaw = read(path.join(R, 'mac/tor-smoke.json'));
-const torStep = name => torRaw?.steps?.find(x => x.name.startsWith(name));
-const tor = torRaw && { isTor: torRaw.isTor === true, control_isTor: torRaw.control_isTor === true, ip_differs: torRaw.ip_differs === true,
-  control_ip: torStep('normal window')?.IP ?? null, tor_ip: torStep('Tor window: check')?.IP ?? null, seconds: torStep('Tor window: check')?.seconds_to_answer ?? null,
-  circuit: torStep('chrome://tor-circuit')?.text ?? '' };
+const torRuns = ['mac/tor-smoke.json', 'mac/tor-smoke-run1.json'].map(f => read(path.join(R, f))).filter(Boolean);
+const torStepOf = (r, name) => r?.steps?.find(x => x.name.startsWith(name));
+// Honest summary of the Tor runs: the circuit view can show a connected client while the end-to-end IP check never answered.
+const torCircuit = torRuns.map(r => torStepOf(r, 'chrome://tor-circuit')?.text || '').find(t => /Connected/.test(t)) || (torRuns[0] && torStepOf(torRuns[0], 'chrome://tor-circuit')?.text) || '';
+const torAnswer = torRuns.map(r => torStepOf(r, 'Tor window: check')).find(x => x && x.IP);
+const tor = torRuns.length ? { runs: torRuns.length, connected: /Connected/.test(torCircuit), answered: !!torAnswer, isTor: torAnswer ? torAnswer.IsTor === true : null,
+  control_ip: torStepOf(torRuns[0], 'normal window')?.IP ?? null, tor_ip: torAnswer?.IP ?? null, seconds: torAnswer?.seconds_to_answer ?? null,
+  circuit: torCircuit, guard: (torCircuit.match(/GUARD\s+(\S+)\s+[\d.:]+\s+\S+\s+(\w\w)/) || []).slice(1, 3).join(' ') } : null;
 const utTxt = txt('mac/ut-tor.txt');
 const unit = utTxt && { passed: +(utTxt.match(/\[  PASSED  \] (\d+) test/)?.[1] ?? 0), failed: +(utTxt.match(/(\d+) FAILED TEST/)?.[1] ?? 0), ran: +(utTxt.match(/\[==========\] (\d+) tests? from/)?.[1] ?? 0) };
 const n2 = read(path.join(R, 'mac/audit-N2-idle15.json'));

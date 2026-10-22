@@ -156,7 +156,7 @@ scene('agent', () => agentTimeline().total, t => {
 
 
 // 4b Tor --------------------------------------------------------------------------------------------------------------
-scene('tor', () => (DATA.tor ? 9000 : 0), t => {
+scene('tor', () => (DATA.tor && DATA.tor.answered ? 9000 : 0), t => {
   const R = DATA.tor, d = 9000; if (!R) return '';
   const box = (title, tone, ip, yes, k) => `<div class="card abs" style="left:${k ? 672 : 48}px;top:150px;width:560px;height:250px;padding:26px 30px;opacity:${ease((t - (k ? 1800 : 400)) / 600)}">
     <div class="tag" style="color:${tone}">${title}</div>
