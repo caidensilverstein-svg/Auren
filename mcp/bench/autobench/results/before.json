@@ -1,0 +1,347 @@
+{
+ "summary": {
+  "label": "before",
+  "tasks": 17,
+  "pass": 2,
+  "js_only": 0,
+  "fail": 15,
+  "passed_calls": 11,
+  "passed_resp_chars": 4971,
+  "passed_est_tokens": 1243,
+  "passed_ms": 16233,
+  "tools": 19,
+  "node": "v24.21.0",
+  "when": "2026-10-22T03:17:40.619Z"
+ },
+ "results": [
+  {
+   "id": "T01",
+   "name": "Shop: search, cheapest mug to cart, checkout",
+   "status": "pass",
+   "ok": true,
+   "error": null,
+   "calls": 7,
+   "chars": 3355,
+   "ms": 742,
+   "tools": [
+    "browser_navigate",
+    "browser_act",
+    "browser_read_section",
+    "browser_snapshot",
+    "browser_click",
+    "browser_act",
+    "browser_act"
+   ],
+   "js_attempt": null
+  },
+  {
+   "id": "T02",
+   "name": "Shop: in-stock filter, sort by price, add 3rd item",
+   "status": "FAIL",
+   "ok": false,
+   "error": null,
+   "calls": 8,
+   "chars": 3034,
+   "ms": 647,
+   "tools": [
+    "browser_navigate",
+    "browser_act",
+    "browser_act",
+    "browser_read_section",
+    "browser_snapshot",
+    "browser_click",
+    "browser_act",
+    "browser_act"
+   ],
+   "js_attempt": null
+  },
+  {
+   "id": "T03",
+   "name": "Bank: log in, read balance, log out",
+   "status": "FAIL",
+   "ok": false,
+   "error": null,
+   "calls": 12,
+   "chars": 2634,
+   "ms": 2039,
+   "tools": [
+    "browser_navigate",
+    "browser_act",
+    "browser_act",
+    "browser_act",
+    "browser_snapshot",
+    "browser_snapshot",
+    "browser_snapshot",
+    "browser_snapshot",
+    "browser_snapshot",
+    "browser_snapshot",
+    "browser_act",
+    "browser_act"
+   ],
+   "js_attempt": null
+  },
+  {
+   "id": "T04",
+   "name": "Grid: sum late-order quantities over 5 pages, submit",
+   "status": "FAIL",
+   "ok": false,
+   "error": null,
+   "calls": 13,
+   "chars": 6255,
+   "ms": 925,
+   "tools": [
+    "browser_navigate",
+    "browser_read_section",
+    "browser_navigate",
+    "browser_read_section",
+    "browser_navigate",
+    "browser_read_section",
+    "browser_navigate",
+    "browser_read_section",
+    "browser_navigate",
+    "browser_read_section",
+    "browser_navigate",
+    "browser_act",
+    "browser_act"
+   ],
+   "js_attempt": null
+  },
+  {
+   "id": "T05",
+   "name": "Wizard: 3 steps with async validation",
+   "status": "FAIL",
+   "ok": false,
+   "error": null,
+   "calls": 21,
+   "chars": 5423,
+   "ms": 3744,
+   "tools": [
+    "browser_navigate",
+    "browser_act",
+    "browser_snapshot",
+    "browser_click",
+    "browser_snapshot",
+    "browser_snapshot",
+    "browser_snapshot",
+    "browser_snapshot",
+    "browser_snapshot",
+    "browser_snapshot",
+    "browser_act",
+    "browser_snapshot",
+    "browser_click",
+    "browser_snapshot",
+    "browser_snapshot",
+    "browser_snapshot",
+    "browser_snapshot",
+    "browser_snapshot",
+    "browser_snapshot",
+    "browser_act",
+    "browser_act"
+   ],
+   "js_attempt": null
+  },
+  {
+   "id": "T06",
+   "name": "Shadow DOM: fill and save inside a web component",
+   "status": "FAIL",
+   "ok": false,
+   "error": null,
+   "calls": 3,
+   "chars": 266,
+   "ms": 406,
+   "tools": [
+    "browser_navigate",
+    "browser_act",
+    "browser_act"
+   ],
+   "js_attempt": {
+    "ok": false,
+    "calls": 1,
+    "error": null
+   }
+  },
+  {
+   "id": "T07",
+   "name": "Iframe (same origin): apply a coupon",
+   "status": "FAIL",
+   "ok": false,
+   "error": null,
+   "calls": 3,
+   "chars": 263,
+   "ms": 410,
+   "tools": [
+    "browser_navigate",
+    "browser_act",
+    "browser_act"
+   ],
+   "js_attempt": {
+    "ok": false,
+    "calls": 1,
+    "error": null
+   }
+  },
+  {
+   "id": "T08",
+   "name": "Iframe (cross origin): click Pay now",
+   "status": "FAIL",
+   "ok": false,
+   "error": null,
+   "calls": 2,
+   "chars": 205,
+   "ms": 423,
+   "tools": [
+    "browser_navigate",
+    "browser_act"
+   ],
+   "js_attempt": null
+  },
+  {
+   "id": "T09",
+   "name": "Overlays: dismiss cookie banner, confirm a native dialog",
+   "status": "FAIL",
+   "ok": false,
+   "error": null,
+   "calls": 3,
+   "chars": 782,
+   "ms": 531,
+   "tools": [
+    "browser_navigate",
+    "browser_act",
+    "browser_act"
+   ],
+   "js_attempt": null
+  },
+  {
+   "id": "T10",
+   "name": "Feed: scroll an infinite list to Post 47 and open it",
+   "status": "FAIL",
+   "ok": false,
+   "error": "Cannot read properties of undefined (reading 'eid')",
+   "calls": 3,
+   "chars": 4102,
+   "ms": 169,
+   "tools": [
+    "browser_navigate",
+    "browser_scroll",
+    "browser_find"
+   ],
+   "js_attempt": null
+  },
+  {
+   "id": "T11",
+   "name": "SPA: client route with delayed content, download",
+   "status": "pass",
+   "ok": true,
+   "error": null,
+   "calls": 4,
+   "chars": 1616,
+   "ms": 15491,
+   "tools": [
+    "browser_navigate",
+    "browser_act",
+    "browser_snapshot",
+    "browser_act"
+   ],
+   "js_attempt": null
+  },
+  {
+   "id": "T12",
+   "name": "Popup tab: read a code in a new tab, come back, verify",
+   "status": "FAIL",
+   "ok": false,
+   "error": "Cannot read properties of undefined (reading 'id')",
+   "calls": 4,
+   "chars": 735,
+   "ms": 617,
+   "tools": [
+    "browser_navigate",
+    "browser_get_tabs",
+    "browser_act",
+    "browser_get_tabs"
+   ],
+   "js_attempt": null
+  },
+  {
+   "id": "T13",
+   "name": "Hover menu: open a submenu and choose Pricing",
+   "status": "FAIL",
+   "ok": false,
+   "error": null,
+   "calls": 3,
+   "chars": 662,
+   "ms": 15442,
+   "tools": [
+    "browser_navigate",
+    "browser_act",
+    "browser_act"
+   ],
+   "js_attempt": {
+    "ok": false,
+    "calls": 1,
+    "error": null
+   }
+  },
+  {
+   "id": "T14",
+   "name": "Custom listbox: pick Norway",
+   "status": "FAIL",
+   "ok": false,
+   "error": null,
+   "calls": 3,
+   "chars": 893,
+   "ms": 521,
+   "tools": [
+    "browser_navigate",
+    "browser_act",
+    "browser_act"
+   ],
+   "js_attempt": null
+  },
+  {
+   "id": "T15",
+   "name": "Range slider: set volume to 7",
+   "status": "FAIL",
+   "ok": false,
+   "error": null,
+   "calls": 2,
+   "chars": 356,
+   "ms": 393,
+   "tools": [
+    "browser_navigate",
+    "browser_act"
+   ],
+   "js_attempt": null
+  },
+  {
+   "id": "T16",
+   "name": "File upload: attach a file",
+   "status": "FAIL",
+   "ok": false,
+   "error": null,
+   "calls": 2,
+   "chars": 356,
+   "ms": 380,
+   "tools": [
+    "browser_navigate",
+    "browser_act"
+   ],
+   "js_attempt": null
+  },
+  {
+   "id": "T17",
+   "name": "Re-rendering list: tick three items from one snapshot (one batch)",
+   "status": "FAIL",
+   "ok": false,
+   "error": null,
+   "calls": 3,
+   "chars": 852,
+   "ms": 441,
+   "tools": [
+    "browser_navigate",
+    "browser_snapshot",
+    "browser_exec"
+   ],
+   "js_attempt": null
+  }
+ ]
+}

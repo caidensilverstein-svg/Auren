@@ -8,6 +8,7 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import Database from 'better-sqlite3';
+import { PAGE_LIB } from './lib/pagelib.js';
 
 (function loadEnv() {
   try {
@@ -424,6 +425,8 @@ function buildElementXml(item) {
   if (attrs.href) a += ` href="${escapeXml(attrs.href)}"`;
   if (attrs.type) a += ` type="${escapeXml(attrs.type)}"`;
   if (attrs.val !== undefined && attrs.val !== '') a += ` val="${escapeXml(attrs.val)}"`;
+  if (attrs.opts) a += ` opts="${escapeXml(attrs.opts)}"`;
+  if (attrs.ctx) a += ` ctx="${escapeXml(attrs.ctx)}"`;
   if (attrs.checked !== undefined) a += ` checked="${attrs.checked}"`;
   if (attrs.disabled) a += ' disabled="true"';
   if (attrs.expanded !== undefined) a += ` expanded="${attrs.expanded}"`;
@@ -470,7 +473,7 @@ function buildXml(data, state, isDiff) {
       const fp = `${item.kind}|${item.text}|${item.attrs.href || ''}`;
       newFPs.set(fp, { eid: item.attrs.eid, kind: item.kind, text: item.text, val: item.attrs.val });
     }
-    const trimmed = region.items.length - added;
+    const trimmed = region.items.length - added + (region.more || 0);
     if (trimmed > 0) {
       wasTruncated = true;
       regionBody.push(`    <!-- ${trimmed} more; use region="${escapeXml(region.name)}" to see all -->`);
@@ -494,101 +497,63 @@ function buildXml(data, state, isDiff) {
 // In-page "DOM quiet for quiet ms (or max ms)" wait, as source text for embedding in other evaluates.
 const SETTLE_PROMISE = (quiet, max) => `await new Promise(res=>{let t;const done=()=>{o.disconnect();res(1)};const o=new MutationObserver(()=>{clearTimeout(t);t=setTimeout(done,${Number(quiet)})});o.observe(document,{subtree:true,childList:true,attributes:true,characterData:true});t=setTimeout(done,${Number(quiet)});setTimeout(done,${Number(max)});});\n`;
 
-// Page-side helpers shared by snapshot/find/act. Elements a person could not see (display:none,
-// zero size, near-zero opacity or font, off the document horizontally, aria-hidden/hidden/inert) are
-// excluded: they are the usual hiding place for prompt-injection text aimed at agents. Invisible
-// Unicode (zero-width, bidi controls, "tag" characters) is stripped from any text we return.
-const PAGE_HELPERS = `
-function vis(el){
-  try{
-    if(el.closest('[aria-hidden="true"],[hidden],[inert]'))return false;
-    const cs=getComputedStyle(el);
-    if(cs.display==='none'||cs.visibility==='hidden'||cs.visibility==='collapse'||parseFloat(cs.opacity)<0.05)return false;
-    const r=el.getBoundingClientRect();
-    if(r.width<2||r.height<2)return false;
-    if(parseFloat(cs.fontSize)<2&&!/^(input|select|textarea|button)$/i.test(el.tagName))return false;
-    const dw=document.documentElement.scrollWidth;
-    if(r.right+window.scrollX<=0||r.left+window.scrollX>=dw)return false;
-    return true;
-  }catch(e){return true;}
-}
-function clean(s){return String(s).replace(/[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF]|[\\u{E0000}-\\u{E007F}]/gu,'');}
-`;
-
 // --- Snapshot JS builder ---
 function snapshotJs(mode, region, maxItems, settleOpts) {
   const mStr = JSON.stringify(mode || 'interactive');
-  const rExpr = region ? `document.querySelector(${JSON.stringify(region)})` : 'null';
+  const rExpr = region ? `(__L.deepQuery(${JSON.stringify(region)},1)[0]||null)` : 'null';
   const mN = Number(maxItems) || 30;
   const startN = eidCounter;
 
   return `(async function(){
-${settleOpts ? SETTLE_PROMISE(settleOpts.quiet, settleOpts.max) : ''}${PAGE_HELPERS}try{
+${settleOpts ? SETTLE_PROMISE(settleOpts.quiet, settleOpts.max) : ''}${PAGE_LIB}try{
 let n=${startN};let hid=0;
-function kind(el){
-  const t=el.tagName.toLowerCase(),r=(el.getAttribute('role')||'').toLowerCase(),ty=(el.type||'').toLowerCase();
-  if(t==='button'||r==='button'||ty==='button'||ty==='submit'||ty==='reset')return'btn';
-  if((t==='a'&&el.href)||r==='link')return'lnk';
-  if(t==='input'||t==='textarea'||r==='textbox'||r==='searchbox')return'inp';
-  if(t==='select'||r==='combobox'||r==='listbox')return'sel';
-  if(ty==='checkbox'||r==='checkbox')return'chk';
-  if(ty==='radio'||r==='radio')return'chk';
-  if(/^h[1-6]$/.test(t)||r==='heading')return'h';
-  if(r==='alert'||r==='status')return'alert';
-  if(r==='menuitem'||r==='tab'||r==='option')return'btn';
-  return'elt';
-}
-function txt(el){
-  return clean(el.getAttribute('aria-label')||el.textContent||el.value||el.getAttribute('placeholder')||el.getAttribute('title')||'').trim().replace(/\\s+/g,' ').slice(0,80);
-}
-function ex(el){
-  const k=kind(el),t=txt(el),eid=k+'-'+(++n);
-  el.setAttribute('data-eid',eid);
-  const tg=el.tagName.toLowerCase(),a={eid};
-  if(el.href)a.href=el.href.slice(0,120);
-  const ty=el.type;
-  if(ty&&!['text','hidden'].includes(ty))a.type=ty;
-  if(el.value&&!['button','submit','reset','a'].includes(tg))a.val=(ty==='password')?'[redacted]':String(el.value).slice(0,50);
-  if(ty==='checkbox'||ty==='radio')a.checked=el.checked;
-  if(el.disabled)a.disabled=true;
-  const exp=el.getAttribute('aria-expanded');
-  if(exp!==null)a.expanded=exp==='true';
-  return{kind:k,text:t,attrs:a};
-}
-document.querySelectorAll('[data-eid]').forEach(e=>e.removeAttribute('data-eid'));
+__L.clearEids();
 const mode=${mStr};
 const scopeEl=${rExpr};
 const maxN=${mN};
-const sels={
-  interactive:'a[href],button,input:not([type="hidden"]),select,textarea,[role="button"],[role="link"],[role="menuitem"],[role="tab"]',
-  full:'a[href],button,input:not([type="hidden"]),select,textarea,h1,h2,h3,h4,h5,h6,p,li,[role="button"],[role="link"],[role="alert"]',
-  outline:'h1,h2,h3,h4,h5,h6,[role="heading"]'
-};
-const sel=sels[mode]||sels.interactive;
-const root=scopeEl||document.body;
-const info={url:location.href,title:document.title,scroll:[Math.round(window.scrollX),Math.round(window.scrollY)],viewport:[window.innerWidth,window.innerHeight]};
-let regions;
-if(!scopeEl){
-  const lms=[
-    {name:'nav',q:'nav,[role="navigation"]'},
-    {name:'header',q:'header,[role="banner"]'},
-    {name:'main',q:'main,[role="main"],[role="search"]'},
-    {name:'aside',q:'aside,[role="complementary"]'},
-    {name:'footer',q:'footer,[role="contentinfo"]'}
-  ];
-  const assigned=new WeakSet();
-  regions=[];
-  for(const lm of lms){
-    const c=document.querySelector(lm.q);
-    if(!c)continue;
-    const items=[...c.querySelectorAll(sel)].filter(e=>{if(assigned.has(e))return false;assigned.add(e);if(!vis(e)){hid++;return false;}return true;}).slice(0,maxN).map(ex);
-    if(items.length)regions.push({name:lm.name,items});
+const sel=mode==='full'?__L.FULL:mode==='outline'?__L.OUTLINE:__L.INTERACTIVE;
+const LM=[['nav','nav,[role="navigation"]'],['header','header,[role="banner"]'],['main','main,[role="main"],[role="search"]'],['aside','aside,[role="complementary"]'],['footer','footer,[role="contentinfo"]']];
+function regionOf(el){
+  for(let e=el;e;e=null){
+    let p=e;
+    while(p){
+      for(const [nm,q] of LM){try{if(p.matches(q))return nm;}catch(x){}}
+      p=p.parentElement||(p.getRootNode&&p.getRootNode().host)||null;
+    }
   }
-  const rem=[...document.body.querySelectorAll(sel)].filter(e=>{if(assigned.has(e))return false;if(!vis(e)){hid++;return false;}return true;}).slice(0,maxN).map(ex);
-  if(rem.length)regions.push({name:'page',items:rem});
-}else{
-  const items=[...root.querySelectorAll(sel)].filter(e=>{if(!vis(e)){hid++;return false;}return true;}).slice(0,maxN).map(ex);
-  regions=[{name:'content',items}];
+  return 'page';
+}
+const info={url:location.href,title:document.title,scroll:[Math.round(window.scrollX),Math.round(window.scrollY)],viewport:[window.innerWidth,window.innerHeight]};
+const pool=scopeEl?__L.all(scopeEl):__L.all();
+const picked=[];
+for(const e of pool){
+  let ok=false;try{ok=e.matches(sel);}catch(x){}
+  if(!ok)continue;
+  if(!__L.vis(e)){hid++;continue;}
+  picked.push(e);
+}
+const groups=new Map();
+for(const e of picked){
+  const r=scopeEl?'content':regionOf(e);
+  if(!groups.has(r))groups.set(r,[]);
+  groups.get(r).push(e);
+}
+const order=scopeEl?['content']:['nav','header','main','aside','footer','page'];
+const regions=[];
+for(const r of order){
+  const els=groups.get(r);
+  if(!els||!els.length)continue;
+  const take=els.slice(0,maxN);
+  const items=take.map(el=>{const it=__L.info(el);const eid=it.kind+'-'+(++n);el.setAttribute('data-eid',eid);it.attrs.eid=eid;it._el=el;return it;});
+  // controls whose names are not unique (six "Add to cart" buttons) or empty get their row context
+  const seen=new Map();
+  for(const it of items){const k=it.kind+'|'+it.text;seen.set(k,(seen.get(k)||0)+1);}
+  for(const it of items){
+    if(it.kind==='h'||it.kind==='alert')continue;
+    if(!it.text||seen.get(it.kind+'|'+it.text)>1){const c=__L.context(it._el,it.text);if(c)it.attrs.ctx=c;}
+    delete it._el;
+  }
+  regions.push({name:r,items,more:els.length-take.length});
 }
 return JSON.stringify({info,regions,nextN:n,hidden:hid});
 }catch(e){return JSON.stringify({error:e.message});}
@@ -695,16 +660,15 @@ async function actNavigate(client, target, url, snap = null) {
 }
 
 async function actClick(client, target, raw, snap = null) {
-  const resolved = EID_RE.test(raw) ? `[data-eid="${raw}"]` : raw;
+  const isEid = EID_RE.test(raw);
   const elResult = await client.Runtime.evaluate({
-    expression: `(function(){
-      const el=document.querySelector(${JSON.stringify(resolved)});
+    expression: `(function(){${PAGE_LIB}
+      const el=${isEid ? `__L.byEid(${JSON.stringify(raw)})` : `__L.deepQuery(${JSON.stringify(raw)},1)[0]`};
       if(!el)return null;
-      el.scrollIntoView({block:'center',inline:'center'});
-      const r=el.getBoundingClientRect();
+      const c=__L.center(el);
       const f=el.closest('form');const ty=(el.getAttribute('type')||'').toLowerCase();const tg=el.tagName.toLowerCase();
       const submits=!!f&&((tg==='button'&&(ty===''||ty==='submit'))||(tg==='input'&&(ty==='submit'||ty==='image')));
-      return JSON.stringify({x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2),tag:el.tagName.toLowerCase(),href:el.href||'',url:location.href,submits});
+      return JSON.stringify({x:c.x,y:c.y,tag:el.tagName.toLowerCase(),href:el.href||'',target:el.getAttribute('target')||'',url:location.href,submits});
     })()`,
     returnByValue: true
   });
@@ -733,19 +697,29 @@ async function actClick(client, target, raw, snap = null) {
 
 async function actFill(client, target, raw, value, snap = null) {
   const allowSensitive = checkPermission('sensitive_input').allowed;
-  const resolved = EID_RE.test(raw) ? `[data-eid="${raw}"]` : raw;
+  const isEid = EID_RE.test(raw);
   const r = await client.Runtime.evaluate({
-    expression: `(function(){
-      const el=document.querySelector(${JSON.stringify(resolved)});
+    expression: `(function(){${PAGE_LIB}
+      const el=${isEid ? `__L.byEid(${JSON.stringify(raw)})` : `__L.deepQuery(${JSON.stringify(raw)},1)[0]`};
       if(!el)return'Not found';
       const ty=(el.getAttribute('type')||'').toLowerCase();const ac=(el.getAttribute('autocomplete')||'').toLowerCase();
       const nm=((el.getAttribute('name')||'')+' '+(el.id||'')).toLowerCase();
       const sensitive=ty==='password'||/^(cc-|one-time-code|new-password|current-password)/.test(ac)||/(card.?num|cvv|cvc|ssn|social.?sec)/.test(nm);
       if(sensitive&&!${allowSensitive})return JSON.stringify({sensitive:true,url:location.href});
       el.focus();
-      const desc=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value');
-      if(desc&&desc.set)desc.set.call(el,${JSON.stringify(value)});
-      else el.value=${JSON.stringify(value)};
+      const want=${JSON.stringify(value)};
+      if(el.tagName==='SELECT'){
+        const lc=want.toLowerCase();
+        const o=[...el.options].find(o=>o.value===want)||[...el.options].find(o=>o.textContent.trim().toLowerCase()===lc)||[...el.options].find(o=>o.textContent.trim().toLowerCase().includes(lc));
+        if(!o)return JSON.stringify({noOption:true,options:[...el.options].map(o=>o.textContent.trim()).slice(0,12),url:location.href});
+        el.value=o.value;
+      }else if(el.isContentEditable&&!('value' in el)){
+        el.textContent=want;
+      }else{
+        const desc=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value');
+        if(desc&&desc.set)desc.set.call(el,want);
+        else el.value=want;
+      }
       el.dispatchEvent(new Event('input',{bubbles:true}));
       el.dispatchEvent(new Event('change',{bubbles:true}));
       return JSON.stringify({ok:true,url:location.href});
@@ -756,6 +730,7 @@ async function actFill(client, target, raw, value, snap = null) {
   const fr = JSON.parse(r?.result?.value || '{}');
   { const b = fr.url ? domainBlocks(fr.url, 'write') : null; if (b) return { denied: b }; }
   if (fr.sensitive) return { denied: { reason: "This is a password / payment / one-time-code field; agent input there is blocked. The user can allow it with 'auren-perm set sensitive_input allow'." } };
+  if (fr.noOption) return { error: `No option matches '${value}'. Options: ${fr.options.join(' | ')}` };
   // fill never navigates by itself, so no navigation watch is needed
   return afterAction(client, target, { navW: { fired: false, cancel() {} }, loadW: { promise: Promise.resolve(true), cancel() {} }, cancel() {} }, snap, 30, 150);
 }
@@ -913,8 +888,30 @@ function buildServer() {
       return errXml('browser_fill', e.message);
     }
   });
+  // Resolve a text/CSS query on the page with the shared library (accessible names, shadow DOM, iframes) and mark the
+  // hits with eids. interactiveOnly=false also matches plain text elements (used for reads and as a click fallback).
+  const resolveJs = (q, limit, interactiveOnly) => `(function(){${PAGE_LIB}
+    let n=${eidCounter};
+    const hits=__L.resolve(${JSON.stringify(q)},${limit},${interactiveOnly});
+    const items=hits.map(h=>{const it=__L.info(h.el);const eid=it.kind+'-'+(++n);h.el.setAttribute('data-eid',eid);it.attrs.eid=eid;it.score=h.score;const c=__L.context(h.el,it.text);if(c)it.attrs.ctx=c;return it;});
+    return JSON.stringify({items,nextN:n,tie:hits.length>1&&hits[1].score===hits[0].score});
+  })()`;
+  async function resolveQuery(client, q, limit, interactiveOnly) {
+    let r = await client.Runtime.evaluate({ expression: resolveJs(q, limit, interactiveOnly), returnByValue: true });
+    let found = JSON.parse(r?.result?.value || '{"items":[]}');
+    if (!found.items.length && interactiveOnly) {
+      r = await client.Runtime.evaluate({ expression: resolveJs(q, limit, false), returnByValue: true });
+      found = JSON.parse(r?.result?.value || '{"items":[]}');
+    }
+    if (typeof found.nextN === 'number') eidCounter = found.nextN;
+    return found;
+  }
+  const ambiguityNote = (q, found) => found.tie
+    ? `\n<note ambiguous="${found.items.length}">"${escapeXml(q)}" matched several elements equally well; acted on ${escapeXml(found.items[0].attrs.eid)}. Others: ${found.items.slice(1).map(i => `${i.attrs.eid}${i.attrs.ctx ? ` (${escapeXml(i.attrs.ctx)})` : ''}`).join(', ')}. Use browser_find, then an eid.</note>`
+    : '';
+
   server.registerTool('browser_act', {
-    description: 'Find an element by natural language description and act on it in one step. action: "click", "fill", "read". For fill, provide value. Eliminates the snapshot→find→act round trip.',
+    description: 'Find an element by its visible name (label, placeholder, button text, aria-label) or CSS selector and act on it in one step. action: "click", "fill", "read". For fill, provide value (for a <select>, the option text or value). Pierces shadow DOM and same-origin iframes. Eliminates the snapshot→find→act round trip.',
     inputSchema: {
       find: z.string(),
       action: z.enum(['click', 'fill', 'read']),
@@ -925,47 +922,28 @@ function buildServer() {
     try {
       if (action === 'click' || action === 'fill') {
         const perm = checkPermission(action);
-        if (!perm.allowed) return { content: [{ type: 'text', text: 
-`<permission_denied>${perm.reason}</permission_denied>` }] };
+        if (!perm.allowed) return { content: [{ type: 'text', text: `<permission_denied>${perm.reason}</permission_denied>` }] };
       }
       return await withCDP(tab_id, async (client, target) => {
-        const startN = eidCounter;
-        const findResult = await client.Runtime.evaluate({
-          expression: `(function(){
-            let n=${startN};
-            const q=${JSON.stringify(find)};
-            const isSel=/^[.#[*]/.test(q)||q.includes('>')||/\\s[.#[]/.test(q);
-            function kind(el){const t=el.tagName.toLowerCase(),r=(el.getAttribute('role')||'').toLowerCase(),ty=(el.type||'').toLowerCase();if(t==='button'||r==='button'||ty==='button')return'btn';if((t==='a'&&el.href)||r==='link')return'lnk';if(t==='input'||t==='textarea'||r==='textbox')return'inp';if(t==='select'||r==='combobox')return'sel';return'elt';}
-            let results=[];
-            if(isSel){try{results=[...document.querySelectorAll(q)].slice(0,1);}catch(_){}}
-            if(!results.length){const all=[...document.querySelectorAll('a,button,input,select,textarea,[role]')];results=all.filter(el=>(el.textContent||el.value||el.getAttribute('aria-label')||el.getAttribute('placeholder')||'').trim().toLowerCase().includes(q.toLowerCase())).slice(0,1);}
-            if(!results.length)return JSON.stringify({error:'not found'});
-            const el=results[0];const k=kind(el);const eid=k+'-'+(++n);el.setAttribute('data-eid',eid);
-            return JSON.stringify({eid,kind:k,text:(el.textContent||el.value||el.getAttribute('aria-label')||'').trim().slice(0,80),nextN:n});
-          })()`,
-          returnByValue: true
-        });
-        const found = JSON.parse(findResult?.result?.value || '{}');
-        if (found.error) return { content: [{ type: 'text', text: `<error>browser_act: element not found: ${escapeXml(find)}</error>` }] };
-        if (typeof found.nextN === 'number') eidCounter = found.nextN;
-
-        const resolved = `[data-eid="${found.eid}"]`;
+        const found = await resolveQuery(client, find, 3, action !== 'read');
+        if (!found.items.length) return { content: [{ type: 'text', text: `<error>browser_act: element not found: ${escapeXml(find)}</error>` }] };
+        const top = found.items[0].attrs.eid;
+        const note = ambiguityNote(find, found);
         if (action === 'read') {
-          const r = await client.Runtime.evaluate({ expression: `(function(){const el=document.querySelector(${JSON.stringify(resolved)});return el?(el.innerText||el.textContent||el.value||'').trim().slice(0,2000):'[not found]';})()`, returnByValue: true });
-          return { content: [{ type: 'text', text: r?.result?.value ?? '[no content]' }] };
+          const r = await client.Runtime.evaluate({ expression: `(function(){${PAGE_LIB}const el=__L.byEid(${JSON.stringify(top)});return el?__L.textOf(el).slice(0,2000):'[not found]';})()`, returnByValue: true });
+          return { content: [{ type: 'text', text: (r?.result?.value ?? '[no content]') + note }] };
         }
         if (action === 'fill') {
           if (value === undefined) return { content: [{ type: 'text', text: '<error>browser_act fill requires value</error>' }] };
-          await client.Runtime.evaluate({ expression: `(function(){const el=document.querySelector(${JSON.stringify(resolved)});if(!el)return;el.focus();const d=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value');if(d&&d.set)d.set.call(el,${JSON.stringify(value)});else el.value=${JSON.stringify(value)};el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));})()`, returnByValue: true });
-          const xml = await takeSnapshot(client, target.id, { mode: 'interactive', isDiff: true, settle: { quiet: 30, max: 150 } });
-          return { content: [{ type: 'text', text: xml }] };
-        }
-        if (action === 'click') {
-          const r = await actClick(client, target, found.eid, { mode: 'interactive' });
+          const r = await actFill(client, target, top, value, { mode: 'interactive', isDiff: true });
           if (r.denied) return denied(r.denied);
           if (r.error) return errXml('browser_act', r.error);
-          return { content: [{ type: 'text', text: r.xml }] };
+          return { content: [{ type: 'text', text: r.xml + note }] };
         }
+        const r = await actClick(client, target, top, { mode: 'interactive' });
+        if (r.denied) return denied(r.denied);
+        if (r.error) return errXml('browser_act', r.error);
+        return { content: [{ type: 'text', text: r.xml + note }] };
       });
     } catch (e) {
       return { content: [{ type: 'text', text: `<error tool="browser_act">${escapeXml(e.message)}</error>` }] };
@@ -973,47 +951,19 @@ function buildServer() {
   });
 
   server.registerTool('browser_find', {
-    description: 'Find elements matching a text query, CSS selector, or ARIA label. Returns up to 5 matches with eids. Use when you need to locate an element without a full page snapshot.',
+    description: 'Find elements by visible name (label, placeholder, button text, aria-label) or CSS selector. Returns up to 5 matches, best first, with eids and row context for disambiguation. Pierces shadow DOM and same-origin iframes. Use when you need to locate an element without a full page snapshot.',
     inputSchema: { query: z.string(), tab_id: z.string().optional() }
   }, async ({ query, tab_id }) => {
     try {
       const perm = checkPermission('read');
       if (!perm.allowed) return denied(perm);
       return await withCDP(tab_id, async (client) => {
-        const startN = eidCounter;
-        const r = await client.Runtime.evaluate({
-          expression: `(function(){
-            let n=${startN};
-            const q=${JSON.stringify(query)};
-            const isSel=/^[.#[*]/.test(q)||q.includes('>')||/\\s[.#[]/.test(q);
-            function kind(el){const t=el.tagName.toLowerCase(),r=(el.getAttribute('role')||'').toLowerCase(),ty=(el.type||'').toLowerCase();if(t==='button'||r==='button'||ty==='button')return'btn';if((t==='a'&&el.href)||r==='link')return'lnk';if(t==='input'||t==='textarea'||r==='textbox')return'inp';if(t==='select'||r==='combobox')return'sel';if(/^h[1-6]$/.test(t)||r==='heading')return'h';return'elt';}
-            let results=[];
-            if(isSel){try{results=[...document.querySelectorAll(q)].slice(0,5);}catch(_){}}
-            if(!results.length){
-              const all=[...document.querySelectorAll('a,button,input,select,textarea,[role],h1,h2,h3,h4,h5,h6')];
-              results=all.filter(el=>(el.textContent||el.value||el.getAttribute('aria-label')||el.getAttribute('placeholder')||'').trim().toLowerCase().includes(q.toLowerCase())).slice(0,5);
-            }
-            const items=results.map(el=>{const k=kind(el);const eid=k+'-'+(++n);el.setAttribute('data-eid',eid);return{kind:k,eid,text:(el.textContent||el.value||el.getAttribute('aria-label')||'').trim().slice(0,80),href:el.href||'',type:el.type||''};});
-            return JSON.stringify({items,nextN:n});
-          })()`,
-          returnByValue: true
-        });
-
-        const raw = r?.result?.value;
-        if (!raw) return { content: [{ type: 'text', text: '<results count="0" />' }] };
-        const data = JSON.parse(raw);
-        if (typeof data.nextN === 'number') eidCounter = data.nextN;
-
-        if (!data.items.length) {
+        const found = await resolveQuery(client, query, 5, true);
+        if (!found.items.length) {
           return { content: [{ type: 'text', text: `<results count="0">No elements matching: ${escapeXml(query)}</results>` }] };
         }
-        const lines = [`<results count="${data.items.length}">`];
-        for (const item of data.items) {
-          let a = ` eid="${escapeXml(item.eid)}"`;
-          if (item.href) a += ` href="${escapeXml(item.href.slice(0, 100))}"`;
-          if (item.type && !['text', 'hidden', ''].includes(item.type)) a += ` type="${escapeXml(item.type)}"`;
-          lines.push(`  <${item.kind}${a}>${escapeXml(item.text)}</${item.kind}>`);
-        }
+        const lines = [`<results count="${found.items.length}">`];
+        for (const item of found.items) lines.push(buildElementXml(item).replace(/^    /, '  '));
         lines.push('</results>');
         return { content: [{ type: 'text', text: lines.join('\n') }] };
       });
@@ -1046,15 +996,15 @@ function buildServer() {
         if (!region) {
           selExpr = 'document.body';
         } else if (/^(btn|lnk|inp|sel|chk|h|elt|alert)-\d+$/.test(region)) {
-          selExpr = `document.querySelector('[data-eid="${region}"]')`;
+          selExpr = `__L.byEid(${JSON.stringify(region)})`;
         } else if (lmMap[region]) {
-          selExpr = `document.querySelector(${JSON.stringify(lmMap[region])})`;
+          selExpr = `(__L.deepQuery(${JSON.stringify(lmMap[region])},1)[0]||null)`;
         } else {
-          selExpr = `document.querySelector(${JSON.stringify(region)})`;
+          selExpr = `(__L.deepQuery(${JSON.stringify(region)},1)[0]||null)`;
         }
 
         const r = await client.Runtime.evaluate({
-          expression: `(function(){const el=${selExpr};if(!el)return'[not found]';const t=(el.innerText||el.textContent||'').replace(/[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF]|[\\u{E0000}-\\u{E007F}]/gu,'').replace(/\\n{3,}/g,'\\n\\n').trim();return t.length>${cap}?t.slice(0,${cap})+'\\n[truncated]':t;})()`,
+          expression: `(function(){${PAGE_LIB}const el=${selExpr};if(!el)return'[not found]';const t=(el.innerText||el.textContent||'').replace(/[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF]|[\\u{E0000}-\\u{E007F}]/gu,'').replace(/\\n{3,}/g,'\\n\\n').trim();return t.length>${cap}?t.slice(0,${cap})+'\\n[truncated]':t;})()`,
           returnByValue: true
         });
         return { content: [{ type: 'text', text: r?.result?.value ?? '[no content]' }] };
@@ -1209,8 +1159,8 @@ function buildServer() {
                 if (!st.selector && !st.text) err = 'wait_for needs selector or text'; else err = (await actWaitFor(client, st)).error ?? null;
               } else if (st.op === 'read') {
                 const cap = Math.min(Number(st.max_chars) || 4000, 12000);
-                const sel = !st.region ? 'document.body' : EID_RE.test(st.region) ? `document.querySelector('[data-eid="${st.region}"]')` : `document.querySelector(${JSON.stringify(st.region)})`;
-                const r = await client.Runtime.evaluate({ expression: `(function(){const el=${sel};if(!el)return'[not found]';const t=(el.innerText||el.textContent||'').replace(/[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF]|[\\u{E0000}-\\u{E007F}]/gu,'').replace(/\\n{3,}/g,'\\n\\n').trim();return t.length>${cap}?t.slice(0,${cap})+'\\n[truncated]':t;})()`, returnByValue: true });
+                const sel = !st.region ? 'document.body' : EID_RE.test(st.region) ? `__L.byEid(${JSON.stringify(st.region)})` : `(__L.deepQuery(${JSON.stringify(st.region)},1)[0]||null)`;
+                const r = await client.Runtime.evaluate({ expression: `(function(){${PAGE_LIB}const el=${sel};if(!el)return'[not found]';const t=(el.innerText||el.textContent||'').replace(/[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF]|[\\u{E0000}-\\u{E007F}]/gu,'').replace(/\\n{3,}/g,'\\n\\n').trim();return t.length>${cap}?t.slice(0,${cap})+'\\n[truncated]':t;})()`, returnByValue: true });
                 body = r?.result?.value ?? ''; lastView = true;
               } else if (st.op === 'snapshot') {
                 body = await takeSnapshot(client, target.id, { mode: st.mode ?? 'interactive', region: st.region ?? null, maxItems: st.max_items, isDiff: false }); lastView = true; navigatedSinceView = false;
