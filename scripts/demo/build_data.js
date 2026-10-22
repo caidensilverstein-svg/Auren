@@ -73,8 +73,19 @@ for (const row of speed.rows) { const v = row.values.map(x => x ?? (row.lower ? 
 speed.rows = speed.rows.filter(r => r.values.some(v => v != null));
 speed.notes = (read(path.join(R, 'speed-notes.json')) || ['Official Chrome is a PGO/LTO build; the Auren dev build is a component build with DCHECKs on.']);
 
+// ---- API surface (Auren vs stock Chrome) ----------------------------------------------------------------------------
+const sa = read(path.join(R, 'mac/surface/auren.json')), sc = read(path.join(R, 'mac/surface/chrome.json'));
+const surface = sa && sc && (() => {
+  const keys = Object.keys(sc.apis);
+  const removed = keys.filter(k => sc.apis[k] === true && sa.apis[k] === false).map(k => k.replace(/^[^:]+:\s*/, '').replace(/^document\./, ''));
+  const differ = keys.filter(k => JSON.stringify(sc.apis[k]) !== JSON.stringify(sa.apis[k])).length;
+  return { total: keys.length, differ, removed, gpc: sa.headers['nav sec-gpc'] === '1', chrome_gpc: sc.headers['nav sec-gpc'] === '1',
+    hw: [sc.apis['hardwareConcurrency'], sa.apis['hardwareConcurrency']], mem: [sc.apis['device memory'], sa.apis['device memory']],
+    brands: [sc.apis['userAgentData brands'], sa.apis['userAgentData brands']] };
+})();
+
 const evidence = read(path.join(R, 'evidence.json')) || [{ tone: 'open', text: 'evidence.json not written yet' }];
-const data = { when: netlog.when, netlog, prot: protOut, agent: { dir: AG, tasks }, bench, tokens, speed, evidence };
+const data = { when: netlog.when, netlog, prot: protOut, surface, agent: { dir: AG, tasks }, bench, tokens, speed, evidence };
 fs.mkdirSync(path.dirname(arg('--out', '/tmp/auren-demo/data.json')), { recursive: true });
 fs.writeFileSync(arg('--out', '/tmp/auren-demo/data.json'), JSON.stringify(data, null, 1));
 const miss = Object.entries({ prot: protOut, bench, tokens, 'agent tasks': tasks.length }).filter(([, v]) => !v).map(([k]) => k);

@@ -96,6 +96,31 @@ scene('protections', 15000, t => {
     t, d, 'scripts/privacy/protections_check.js', 'medians of ' + P.runs + ' runs per page');
 });
 
+
+// 3b API surface --------------------------------------------------------------------------------------------------
+scene('surface', 12000, t => {
+  const S = DATA.surface, d = 12000;
+  if (!S) return frame('', t, d);
+  const names = { 'browsingTopics': 'Topics API', 'joinAdInterestGroup': 'Protected Audience: join', 'runAdAuction': 'Protected Audience: auction', 'HTMLFencedFrameElement': 'Fenced Frames', 'anchor attributionSrc': 'Attribution Reporting', 'document.hasPrivateToken': 'Private State Tokens', 'hasPrivateToken': 'Private State Tokens', 'connection': 'Network Information API' };
+  const rows = S.removed.map(n => names[n] || n);
+  return frame(`
+    <div class="abs" style="left:48px;top:44px"><div class="tag">Privacy surface</div><div class="h2" style="margin-top:6px">What a website can see, measured in the running browser</div></div>
+    <div class="abs card" style="left:48px;top:140px;width:560px;height:440px;padding:24px 28px">
+      <div class="tag" style="color:var(--gold)">Exposed by Chrome, absent in Auren</div>
+      <div style="margin-top:14px">${rows.map((r, i) => `<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:22px;opacity:${ease((t - 500 - i * 380) / 400)}"><span>${esc(r)}</span><span class="green">removed</span></div>`).join('')}</div>
+    </div>
+    <div class="abs" style="left:640px;top:140px;width:592px">
+      ${[
+        ['Sec-GPC: 1 sent with page requests', S.gpc ? 'Chrome sends no Global Privacy Control signal' : '', 'var(--green)'],
+        [`hardwareConcurrency ${S.hw[1]}`, `Chrome reports the exact core count (${S.hw[0]})`, 'var(--gold)'],
+        [`deviceMemory ${S.mem[1]}`, `Chrome reports ${S.mem[0]}`, 'var(--gold)'],
+        ['No "Brave" in client-hint brands', 'brands: ' + String(S.brands[1]).replace(/\|/g, ', '), 'var(--green)'],
+      ].map((c, i) => `<div class="card" style="padding:16px 22px;margin-bottom:14px;opacity:${ease((t - 1200 - i * 700) / 500)}"><div style="font-size:23px;font-weight:600;color:${c[2]}">${esc(c[0])}</div><div class="mut" style="font-size:17px;margin-top:3px">${esc(c[1])}</div></div>`).join('')}
+    </div>
+    <div class="abs sub" style="left:48px;top:604px;width:1184px;font-size:18px;opacity:${ease((t - 6500) / 800)}">${S.differ} of ${S.total} probed surfaces differ from stock Chrome. Still exposed, like Chrome: WebUSB, WebHID, Serial, Bluetooth, battery. An optional patch for those is waiting on your call.</div>`,
+    t, d, 'scripts/privacy/api_surface.js', 'same Mac, headful, fresh profiles');
+});
+
 // 4 agent ----------------------------------------------------------------------------------------------------------
 function agentTimeline() {
   const A = DATA.agent; let at = 0; const segs = [];

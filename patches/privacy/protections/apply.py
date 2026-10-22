@@ -318,4 +318,20 @@ edit(Q + "query_filter_component_installer.cc",
 edit(Q + "BUILD.gn", '    "//brave/components/query_filter/common/internal",\n    "//components/url_pattern_index",\n',
      '    "//brave/components/query_filter/common/internal",\n    ' + GRIT_DEP + '\n    "//components/url_pattern_index",\n    "//ui/base",\n',
      marker=GRIT_DEP)
+
+# The registration hook above only runs if the component updater registers components. The data singleton is what is
+# actually consulted on every request, so it loads the bundled rules itself (and logs it, so the runtime check can see it).
+QF = Q + "query_filter_data.cc"
+edit(QF, '#include "brave/components/query_filter/common/features.h"\n',
+     '#include "brave/components/query_filter/common/features.h"\n' + RB_INC,
+     marker='#include "ui/base/resource/resource_bundle.h"')
+edit(QF, "QueryFilterData::QueryFilterData() = default;\n",
+     "QueryFilterData::QueryFilterData() {\n"
+     "  // Auren: rules shipped inside the app (no component updater).\n"
+     "  const bool ok = PopulateDataFromComponent(\n"
+     "      ui::ResourceBundle::GetSharedInstance().LoadDataResourceString(\n"
+     "          " + idr("query-filter.json") + "));\n"
+     "  LOG(ERROR) << \"AUREN_PROTECTIONS: query filter rules \" << (ok ? \"loaded\" : \"FAILED to load\");\n"
+     "}\n",
+     marker="AUREN_PROTECTIONS: query filter rules")
 print("done")
