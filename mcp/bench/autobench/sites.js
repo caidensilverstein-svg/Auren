@@ -4,8 +4,11 @@
 import http from 'node:http';
 
 const shell = (title, body) => `<!doctype html><html lang="en"><meta charset="utf-8"><title>${title}</title>
-<style>body{font:16px system-ui;margin:24px}button,input,select{font:inherit;margin:4px;padding:4px 8px}.row{margin:6px 0}
-.hide{display:none}table{border-collapse:collapse}td,th{border:1px solid #999;padding:4px 10px}</style><body>${body}</body></html>`;
+<style>:root{color-scheme:dark}body{font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;margin:0;padding:28px 36px;background:#111118;color:#e9e6dc}
+h1{font-size:22px;margin:0 0 14px;color:#c9a84c;font-weight:600}a{color:#d9bd6a}button,input,select{font:inherit;margin:4px;padding:6px 12px;border-radius:7px;border:1px solid #34343f;background:#1a1a24;color:#e9e6dc}
+button{background:#c9a84c;color:#111118;border-color:#c9a84c;font-weight:600;cursor:pointer}button:hover{background:#d9bd6a}
+label{display:inline-block;margin:4px 8px 4px 0;color:#bdb9ab}.row{margin:8px 0;padding:8px 12px;background:#1a1a24;border-radius:8px}
+.hide{display:none}table{border-collapse:collapse}td,th{border:1px solid #34343f;padding:5px 12px}th{background:#1a1a24;color:#c9a84c}iframe{border:1px solid #34343f;border-radius:8px;background:#111118}</style><body>${body}</body></html>`;
 // JS expression that reports completion of a task with some data
 const report = (task, expr = 'null') =>
   `fetch('/__done',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({task:'${task}',data:${expr}})})`;

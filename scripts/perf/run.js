@@ -52,7 +52,7 @@ async function pageTarget(b) {
   throw new Error('no page target');
 }
 async function attach(b, target) { const c = await CDP.connect(target.webSocketDebuggerUrl.replace(/ws:\/\/[^/]+/, `ws://127.0.0.1:${b.port}`)); await c.send('Page.enable'); return c; }
-const evalIn = async (c, expr) => (await c.send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true })).result.value;
+const evalIn = async (c, expr, timeoutMs = 20000) => (await c.send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true }, undefined, timeoutMs)).result.value;
 
 function treeStats(rootPid) {
   const rows = execFileSync('ps', ['-axo', 'pid=,ppid=,rss=,command=']).toString().trim().split('\n').map(l => l.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/)).filter(Boolean)
@@ -110,8 +110,9 @@ const tests = {
           const { targetId } = await browser.send('Target.createTarget', { url: 'about:blank' });
           const list = await (await fetch(`http://127.0.0.1:${b.port}/json/list`)).json();
           const c = await attach(b, list.find(t => t.id === targetId));
-          let total = 0, failed = 0, blocked = 0, bytes = 0; const reqIds = new Set(); const blockedHosts = new Set();
+          let total = 0, failed = 0, blocked = 0, bytes = 0, crashed = false; const reqIds = new Set(); const blockedHosts = new Set();
           c.on(m => {
+            if (m.method === 'Inspector.targetCrashed') crashed = true;
             if (m.method === 'Network.requestWillBeSent') { total++; reqIds.add(m.params.requestId); }
             if (m.method === 'Network.loadingFailed') { failed++; if (m.params.blockedReason || /BLOCKED_BY_CLIENT/.test(m.params.errorText || '')) blocked++; }
             if (m.method === 'Network.loadingFinished') bytes += m.params.encodedDataLength || 0;
@@ -123,11 +124,13 @@ const tests = {
           await Promise.race([loadP, sleep(30000).then(() => { loaded = false; })]);
           const loadMs = performance.now() - t0;
           await sleep(2500);                               // late ads/trackers fire after load
-          const lcp = await evalIn(c, `new Promise(r=>{try{let v=0;new PerformanceObserver(l=>{for(const e of l.getEntries())v=e.startTime}).observe({type:'largest-contentful-paint',buffered:true});setTimeout(()=>r(v),50)}catch(e){r(0)}})`);
-          samples.push({ load_ms: round(loadMs), lcp_ms: round(lcp), requests: total, blocked, failed, mb: round(bytes / 1048576, 2), loaded });
+          let lcp = 0, error = null;
+          try { lcp = await evalIn(c, `new Promise(r=>{try{let v=0;new PerformanceObserver(l=>{for(const e of l.getEntries())v=e.startTime}).observe({type:'largest-contentful-paint',buffered:true});setTimeout(()=>r(v),50)}catch(e){r(0)}})`); }
+          catch (e) { error = crashed ? 'renderer crashed' : 'page unresponsive: ' + e.message; console.error(`!! ${url}: ${error}`); }
+          samples.push({ load_ms: round(loadMs), lcp_ms: round(lcp), requests: total, blocked, failed, mb: round(bytes / 1048576, 2), loaded, crashed, ...(error ? { error } : {}) });
           await browser.send('Target.closeTarget', { targetId }); browser.close(); c.close();
         }
-        per.push({ url, median_load_ms: round(median(samples.map(s => s.load_ms))), median_lcp_ms: round(median(samples.map(s => s.lcp_ms))), median_requests: median(samples.map(s => s.requests)), median_blocked: median(samples.map(s => s.blocked)), median_mb: round(median(samples.map(s => s.mb)), 2), samples });
+        per.push({ url, errors: samples.filter(x => x.error).length, median_load_ms: round(median(samples.map(s => s.load_ms))), median_lcp_ms: round(median(samples.map(s => s.lcp_ms))), median_requests: median(samples.map(s => s.requests)), median_blocked: median(samples.map(s => s.blocked)), median_mb: round(median(samples.map(s => s.mb)), 2), samples });
       }
     } finally { await b.stop(); }
     const sum = k => per.reduce((a, p) => a + p[k], 0);

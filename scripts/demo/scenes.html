@@ -1,0 +1,214 @@
+<!doctype html>
+<html><meta charset="utf-8"><title>Auren demo scenes</title>
+<style>
+  :root{--bg:#0a0a0f;--s1:#111118;--s2:#1a1a24;--line:#2a2a36;--gold:#c9a84c;--gold2:#d9bd6a;--text:#ece8dc;--mut:#8a8a99;--red:#c0392b;--green:#4fae7b}
+  *{box-sizing:border-box}
+  html,body{margin:0;width:1280px;height:720px;overflow:hidden;background:var(--bg);color:var(--text);font-family:Inter,"Noto Sans",system-ui,sans-serif}
+  #stage{position:relative;width:1280px;height:720px;overflow:hidden}
+  .abs{position:absolute}
+  .h1{font-size:54px;font-weight:700;letter-spacing:-0.02em;line-height:1.08}
+  .h2{font-size:34px;font-weight:650;letter-spacing:-0.01em}
+  .sub{font-size:21px;color:var(--mut);line-height:1.45}
+  .gold{color:var(--gold)} .mut{color:var(--mut)} .red{color:#e0675a} .green{color:var(--green)}
+  .card{background:var(--s1);border:1px solid var(--line);border-radius:16px}
+  .mono{font-family:"JetBrains Mono","DejaVu Sans Mono",monospace}
+  .tag{display:inline-block;font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);font-weight:600}
+  .bar{height:26px;border-radius:7px}
+  .foot{position:absolute;left:48px;right:48px;bottom:26px;font-size:15px;color:var(--mut);display:flex;justify-content:space-between}
+  .pill{display:inline-block;padding:3px 11px;border-radius:99px;font-size:15px;font-weight:600}
+  table{border-collapse:collapse}
+  td,th{padding:9px 16px;text-align:right;font-size:21px} th{color:var(--mut);font-weight:500;font-size:16px;text-transform:uppercase;letter-spacing:.1em}
+  td:first-child,th:first-child{text-align:left}
+  .logline{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+</style>
+<body><div id="stage"></div>
+<script>
+const W = 1280, H = 720;
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ease = x => 1 - Math.pow(1 - clamp(x), 3);
+const lerp = (a, b, x) => a + (b - a) * x;
+const fade = (t, d, fin = 400, fout = 400) => Math.min(clamp(t / fin), clamp((d - t) / fout));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmt = n => Math.round(n).toLocaleString('en-US');
+const stage = document.getElementById('stage');
+let DATA = null;
+window.setData = d => { DATA = d; };
+
+// ---------------------------------------------------------------------------------------------------------------
+// Scenes: each has dur (ms) and draw(t) -> html string for the stage. Data comes from window.DATA (measured files).
+// ---------------------------------------------------------------------------------------------------------------
+const SCENES = [];
+const scene = (id, dur, draw) => SCENES.push({ id, dur: typeof dur === 'function' ? dur : () => dur, draw });
+const frame = (inner, t, d, footLeft, footRight) =>
+  `<div class="abs" style="inset:0;opacity:${fade(t, d)}">${inner}<div class="foot"><span>${footLeft || ''}</span><span>${footRight || ''}</span></div></div>`;
+
+// 1 ---------------------------------------------------------------------------------------------------------------
+scene('title', 4200, t => frame(`
+  <div class="abs" style="left:96px;top:210px;width:1100px">
+    <div class="tag" style="opacity:${ease(t / 600)}">Auren &middot; overnight build report</div>
+    <div class="h1" style="margin-top:18px;opacity:${ease((t - 200) / 700)};transform:translateY(${(1 - ease((t - 200) / 700)) * 18}px)">Private by construction.<br><span class="gold">Fast to drive.</span></div>
+    <div class="sub" style="margin-top:26px;opacity:${ease((t - 900) / 700)};max-width:900px">Everything on the next screens was measured on one Mac, last night, by scripts that are in the repo. Where something is not measured, it says so.</div>
+  </div>`, t, 4200, '', DATA ? DATA.when : ''));
+
+// 2 netlog --------------------------------------------------------------------------------------------------------
+scene('netlog', 13000, t => {
+  const D = DATA.netlog, d = 13000;
+  const col = (x, title, minutes, rows, total, tone, k) => `
+    <div class="abs card" style="left:${x}px;top:150px;width:560px;height:430px;padding:26px 30px;opacity:${ease((t - k) / 600)}">
+      <div class="tag" style="color:${tone}">${title}</div>
+      <div class="mut" style="font-size:16px;margin-top:4px">idle capture, ${minutes} min, fresh profile</div>
+      <div style="margin-top:20px">${rows.map((r, i) => `
+        <div style="display:flex;justify-content:space-between;font-size:21px;padding:7px 0;border-bottom:1px solid var(--line);opacity:${ease((t - k - 500 - i * 280) / 400)}">
+          <span class="mono" style="font-size:19px">${esc(r.host)}</span><span class="${r.cls}">${r.note}</span></div>`).join('')}
+      </div>
+      <div class="abs" style="left:30px;bottom:22px;font-size:46px;font-weight:700;color:${tone}">${total}</div>
+    </div>`;
+  const before = D.before.hosts.map(h => ({ host: h.host, note: h.class === 'allowlisted' ? 'DoH (allowed)' : `${h.requests} request${h.requests === 1 ? '' : 's'}`, cls: h.class === 'allowlisted' ? 'mut' : 'red' }));
+  const after = D.after.hosts.map(h => ({ host: h.host, note: h.class === 'allowlisted' ? 'DoH (allowed)' : `${h.requests} request${h.requests === 1 ? '' : 's'}`, cls: h.class === 'allowlisted' ? 'mut' : 'red' }));
+  return frame(`
+    <div class="abs" style="left:48px;top:44px"><div class="tag">Network</div><div class="h2" style="margin-top:6px">Zero Brave on the wire</div></div>
+    ${col(48, 'Before hardening', D.before.minutes, before, `${D.before.unexpected} Brave hosts`, '#e0675a', 300)}
+    ${col(672, 'After hardening', D.after.minutes, after, `${D.after.unexpected} unexpected hosts`, 'var(--green)', 5200)}
+    <div class="abs sub" style="left:48px;right:48px;top:604px;opacity:${ease((t - 9000) / 800)}">netlog_audit.py exits 0 on the second run. The first run is a 15-minute idle capture, the second 7 minutes: a longer rerun is queued.</div>`,
+    t, d, 'scripts/telemetry-audit/netlog_audit.py', 'measured ' + D.when);
+});
+
+// 3 protections ----------------------------------------------------------------------------------------------------
+scene('protections', 15000, t => {
+  const P = DATA.prot, d = 15000;
+  const rows = P.rows.slice(0, 8);
+  const maxReq = Math.max(...rows.map(r => r.requests));
+  return frame(`
+    <div class="abs" style="left:48px;top:44px"><div class="tag">Protection</div><div class="h2" style="margin-top:6px">Ad and tracker blocking, inside the app</div></div>
+    <div class="abs sub" style="left:48px;top:112px;width:1180px">${P.lists} filter lists and the redirect / tracking-parameter rules ship inside the app, pinned by hash. No update server.</div>
+    <div class="abs" style="left:48px;top:178px;width:1184px">
+      ${rows.map((r, i) => { const k = ease((t - 700 - i * 350) / 900); return `
+        <div style="display:flex;align-items:center;margin:10px 0;opacity:${clamp((t - 500 - i * 350) / 300)}">
+          <div class="mono" style="width:300px;font-size:17px">${esc(r.site)}</div>
+          <div style="width:640px;position:relative;height:26px;background:var(--s2);border-radius:7px">
+            <div class="bar abs" style="left:0;top:0;width:${(r.requests / maxReq) * 640 * k}px;background:#3a3a48"></div>
+            <div class="bar abs" style="left:0;top:0;width:${(r.blocked / maxReq) * 640 * k}px;background:var(--gold)"></div></div>
+          <div style="width:240px;padding-left:18px;font-size:19px"><b class="gold">${fmt(r.blocked * k)}</b> <span class="mut">blocked of ${fmt(r.requests)}</span></div></div>`; }).join('')}
+    </div>
+    <div class="abs card" style="left:48px;top:548px;width:1184px;height:104px;padding:16px 28px;opacity:${ease((t - 6500) / 800)}">
+      <span style="font-size:30px;font-weight:700" class="gold">${P.total_blocked} of ${P.total_requests}</span>
+      <span class="sub" style="font-size:22px"> requests blocked over ${P.pages} real pages (${P.pct}%). Stock Chrome, same Mac, same pages: <b style="color:var(--text)">0</b>${P.stock_requests ? ` blocked, and ${fmt(P.stock_requests)} requests issued against ${fmt(P.total_requests)} here (live pages vary run to run).` : '.'}</span></div>`,
+    t, d, 'scripts/privacy/protections_check.js', 'medians of ' + P.runs + ' runs per page');
+});
+
+// 4 agent ----------------------------------------------------------------------------------------------------------
+function agentTimeline() {
+  const A = DATA.agent; let at = 0; const segs = [];
+  for (const task of A.tasks) { const dur = 1400 + task.duration_ms + 900; segs.push({ task, start: at, dur }); at += dur; }
+  return { segs, total: at };
+}
+scene('agent', () => agentTimeline().total, t => {
+  const { segs, total } = agentTimeline();
+  const seg = segs.find(s => t >= s.start && t < s.start + s.dur) || segs[segs.length - 1];
+  const lt = t - seg.start, task = seg.task, rt = clamp(lt - 1400, 0, task.duration_ms);
+  // frames before the first tool call are the blank starting tab: show nothing until the agent has loaded a page
+  const firstCall = task.events.length ? task.events[0].t_ms : 0;
+  const fr = [...task.frames].filter(f => f.t_ms <= rt && f.t_ms >= firstCall).pop() || null;
+  const evs = task.events.filter(e => e.t_ms <= rt);
+  const img = !fr ? '<div class="mono mut" style="padding:20px;font-size:14px">about:blank</div>' : `<img src="file://${DATA.agent.dir}/${task.id}/${fr.file}" style="width:100%;height:100%;object-fit:contain;display:block;background:#111118">`;
+  return frame(`
+    <div class="abs" style="left:48px;top:30px"><div class="tag">Automation &middot; real tool calls, paced for viewing</div>
+      <div class="h2" style="margin-top:4px;font-size:30px">${esc(task.id)} &nbsp;${esc(task.name)}</div></div>
+    <div class="abs card" style="left:48px;top:128px;width:700px;height:448px;overflow:hidden;opacity:${ease(lt / 400)}">
+      <div style="height:34px;background:var(--s2);display:flex;align-items:center;padding:0 14px;gap:8px;border-bottom:1px solid var(--line)">
+        <span style="width:10px;height:10px;border-radius:50%;background:#e0675a"></span><span style="width:10px;height:10px;border-radius:50%;background:var(--gold)"></span><span style="width:10px;height:10px;border-radius:50%;background:var(--green)"></span>
+        <span class="mono mut" style="margin-left:14px;font-size:13px">auren &middot; localhost fixture</span></div>
+      <div style="height:414px;overflow:hidden;position:relative">${img}</div></div>
+    <div class="abs card mono" style="left:772px;top:128px;width:460px;height:448px;padding:16px 18px;font-size:14px;overflow:hidden">
+      <div class="mut" style="margin-bottom:8px">MCP tool calls</div>
+      ${evs.slice(-9).map(e => `<div class="logline" style="margin:7px 0;font-size:14px"><span class="gold">${esc(e.name.replace('browser_', ''))}</span> <span class="mut">${esc(JSON.stringify(e.args || {}).slice(0, 60))}</span><span class="mut"> &middot; ${Math.max(1, (e.done_ms || e.t_ms) - e.t_ms)} ms</span><br><span style="color:${e.ok ? '#9ad0b0' : '#e0675a'}">&rarr; ${esc(e.summary || '')}</span></div>`).join('')}
+    </div>
+    <div class="abs" style="left:48px;top:596px;width:1184px">
+      ${segs.map((s, i) => `<span class="pill" style="margin-right:8px;background:${s === seg ? 'var(--gold)' : 'var(--s2)'};color:${s === seg ? '#111' : 'var(--mut)'}">${esc(s.task.id)}</span>`).join('')}
+      <span class="mut" style="margin-left:10px;font-size:16px">${seg.task.ok ? '<span class="green">passed: the fixture server recorded the goal state</span>' : '<span class="red">failed</span>'}</span></div>`,
+    t, total, 'mcp/bench/autobench', '17 tasks, success checked server-side');
+});
+
+// 5 bench -----------------------------------------------------------------------------------------------------------
+scene('bench', 12000, t => {
+  const B = DATA.bench, d = 12000;
+  const sw = 1100 / 17;
+  const grid = (res, y, lab, tone, k) => `
+    <div class="abs" style="left:48px;top:${y}px;opacity:${ease((t - k) / 500)}"><div class="tag" style="color:${tone}">${lab}</div></div>
+    <div class="abs" style="left:48px;top:${y + 34}px;display:flex;gap:6px;opacity:${ease((t - k) / 500)}">
+      ${res.map((r, i) => `<div style="width:${sw - 6}px;height:62px;border-radius:9px;background:${(t - k - 300 - i * 90) > 0 ? (r === 'pass' ? 'var(--green)' : '#7a2c25') : 'var(--s2)'};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#0a0a0f">${(t - k - 300 - i * 90) > 0 ? (r === 'pass' ? '✓' : '') : ''}</div>`).join('')}
+    </div>`;
+  return frame(`
+    <div class="abs" style="left:48px;top:44px"><div class="tag">Automation</div><div class="h2" style="margin-top:6px">Auren-Bench: the tool layer found its own bugs</div></div>
+    ${grid(B.before.results, 160, `Before: ${B.before.pass} of ${B.tasks} tasks`, '#e0675a', 400)}
+    ${grid(B.after.results, 330, `After: ${B.after.pass} of ${B.tasks} tasks`, 'var(--green)', 4600)}
+    <div class="abs sub" style="left:48px;top:500px;width:1180px;opacity:${ease((t - 8200) / 800)}">Labelled fields had no names. Shadow DOM and iframes were invisible. A native dialog hung the call. Hash links waited 15 s. Each failure is now a regression test: ${B.e2e} end-to-end tests pass.</div>`,
+    t, d, 'node mcp/bench/autobench/run.js', 'deterministic fixture sites; success = server-side goal state');
+});
+
+// 6 context cost ---------------------------------------------------------------------------------------------------
+scene('context', 11000, t => {
+  const T = DATA.tokens, d = 11000;
+  const mx = T.playwright_avg_tokens;
+  const bar = (label, v, color, k, note) => `
+    <div style="margin:22px 0;opacity:${ease((t - k) / 500)}">
+      <div style="display:flex;justify-content:space-between;font-size:21px"><span>${label}</span><span class="mut">${note}</span></div>
+      <div style="height:34px;background:var(--s2);border-radius:8px;margin-top:8px;position:relative">
+        <div class="bar abs" style="height:34px;left:0;top:0;width:${(v / mx) * 1000 * ease((t - k - 300) / 1200)}px;background:${color}"></div>
+        <div class="abs" style="left:${(v / mx) * 1000 * ease((t - k - 300) / 1200) + 12}px;top:3px;font-size:22px;font-weight:700">${fmt(v * ease((t - k - 300) / 1200))}</div></div></div>`;
+  return frame(`
+    <div class="abs" style="left:48px;top:44px"><div class="tag">Automation &middot; context cost</div><div class="h2" style="margin-top:6px">What the model has to read to see a page</div></div>
+    <div class="abs" style="left:48px;top:150px;width:1100px">
+      ${bar('Playwright MCP page snapshot', T.playwright_avg_tokens, '#3a3a48', 400, 'every node, with refs')}
+      ${bar('Auren snapshot (bounded)', T.auren_avg_tokens, 'var(--gold)', 1800, 'on-screen first, 7.5k-char cap')}
+    </div>
+    <div class="abs card" style="left:48px;top:430px;width:1184px;padding:20px 28px;opacity:${ease((t - 6000) / 800)}">
+      <div style="font-size:26px"><b class="gold">${T.ratio}&times; fewer characters</b> <span class="mut">across ${T.pages} real pages (avg tokens, estimated as chars/4).</span></div>
+      <div class="sub" style="margin-top:8px;font-size:19px">Honest caveat: the cap hides elements. Auren omitted ${fmt(T.omitted)} of ${fmt(T.omitted + T.listed)} actionable elements on these pages and says how many in every response; <span class="mono">find</span> and <span class="mono">region</span> expand any part.</div></div>`,
+    t, d, 'mcp/bench/tokens.js vs playwright-core ' + T.pw_version, 'tokens estimated as characters / 4');
+});
+
+// 7 speed ----------------------------------------------------------------------------------------------------------
+scene('speed', 15000, t => {
+  const S = DATA.speed, d = 15000;
+  const cols = S.cols;
+  const cell = (v, fmtf, k, best) => `<td style="opacity:${ease((t - k) / 500)};${best ? 'color:var(--gold);font-weight:700' : ''}">${v == null ? '<span class="mut">not built</span>' : fmtf(v)}</td>`;
+  const rowsHtml = S.rows.map((r, i) => `<tr style="border-top:1px solid var(--line)"><td>${r.label}<div class="mut" style="font-size:14px">${r.unit}</div></td>${cols.map((c, j) => cell(r.values[j], x => (+x).toLocaleString('en-US', { maximumFractionDigits: 1 }), 700 + i * 450 + j * 140, r.best === j)).join('')}</tr>`).join('');
+  return frame(`
+    <div class="abs" style="left:48px;top:44px"><div class="tag">Speed</div><div class="h2" style="margin-top:6px">${esc(S.headline)}</div></div>
+    <div class="abs card" style="left:48px;top:140px;width:1184px;padding:14px 26px">
+      <table style="width:100%"><tr><th></th>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr>${rowsHtml}</table></div>
+    <div class="abs sub" style="left:48px;top:520px;width:1184px;font-size:18px;opacity:${ease((t - 5200) / 800)}">${S.notes.map(n => `&bull; ${esc(n)}`).join('<br>')}</div>`,
+    t, d, 'scripts/perf/run.js', 'one machine, back to back, fresh profiles');
+});
+
+// 8 evidence -------------------------------------------------------------------------------------------------------
+scene('evidence', 10000, t => {
+  const E = DATA.evidence, d = 10000;
+  return frame(`
+    <div class="abs" style="left:48px;top:44px"><div class="tag">Evidence</div><div class="h2" style="margin-top:6px">What passed, what did not, what is still open</div></div>
+    <div class="abs" style="left:48px;top:140px;width:1184px">
+      ${E.map((e, i) => `<div style="display:flex;gap:16px;align-items:baseline;margin:11px 0;font-size:22px;opacity:${ease((t - 400 - i * 420) / 500)}">
+        <span class="pill" style="min-width:92px;text-align:center;background:${e.tone === 'ok' ? 'rgba(79,174,123,.16)' : e.tone === 'open' ? 'rgba(201,168,76,.16)' : 'rgba(224,103,90,.16)'};color:${e.tone === 'ok' ? 'var(--green)' : e.tone === 'open' ? 'var(--gold)' : '#e0675a'}">${e.tone === 'ok' ? 'verified' : e.tone === 'open' ? 'open' : 'failed'}</span>
+        <span>${esc(e.text)}</span></div>`).join('')}
+    </div>`, t, d, '', '');
+});
+
+// 9 close ----------------------------------------------------------------------------------------------------------
+scene('close', 4200, t => frame(`
+  <div class="abs" style="left:96px;top:250px;width:1100px">
+    <div class="h1" style="opacity:${ease(t / 700)}">Auren</div>
+    <div class="sub" style="margin-top:16px;opacity:${ease((t - 500) / 700)}">Private by construction. Fast to drive. Every number in this video came from a file in the repo.</div>
+  </div>`, t, 4200, '', ''));
+
+// ---------------------------------------------------------------------------------------------------------------
+window.timeline = () => { let at = 0; return SCENES.map(s => { const dur = s.dur(); const o = { id: s.id, start: at, dur }; at += dur; return o; }); };
+window.totalMs = () => window.timeline().reduce((a, s) => a + s.dur, 0);
+window.draw = async (ms) => {
+  const tl = window.timeline(); const seg = tl.find(s => ms >= s.start && ms < s.start + s.dur) || tl[tl.length - 1];
+  const sc = SCENES.find(s => s.id === seg.id);
+  stage.innerHTML = sc.draw(ms - seg.start);
+  await Promise.all([...stage.querySelectorAll('img')].map(i => i.decode().catch(() => {})));
+  return seg.id;
+};
+</script></body></html>

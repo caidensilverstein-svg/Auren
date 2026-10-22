@@ -65,15 +65,26 @@ for o in manifest["lists"]:
         shutil.copyfile(src, dst)
         print("copied", RES + o["file"])
 
-# --- resources: one gzip BINDATA include per list ------------------------------------------------------------------
+# --- resources: one gzip BINDATA include per file; the whole block is regenerated on every run so that a changed
+# manifest (new lists, new data files) is picked up, unlike the anchored edits below which are applied once ----------
 includes = "".join(
     f'      <include name="{ident(o["file"], o.get("kind", "list"))}" file="../brave_shields/resources/protections/{o["file"]}" '
     f'type="BINDATA" compress="gzip" />\n' for o in manifest["lists"])
-edit("components/resources/brave_components_resources.grd",
-     "      <!-- WebUI adblock resources -->\n",
-     "      <!-- Auren: bundled filter lists (patches/privacy/protections) -->\n" + includes +
-     "\n      <!-- WebUI adblock resources -->\n",
-     marker="<!-- Auren: bundled filter lists")
+GRD = os.path.join(root, "components/resources/brave_components_resources.grd")
+BEGIN = "      <!-- Auren: bundled filter lists (patches/privacy/protections) -->\n"
+END = "      <!-- WebUI adblock resources -->\n"
+g = open(GRD).read()
+assert g.count(END) == 1, "grd anchor moved"
+head, rest = g.split(END)
+if BEGIN in head:
+    head = head[: head.index(BEGIN)]
+block = BEGIN + includes + "\n"
+new_g = head + block + END + rest
+if new_g == g:
+    print("skip   grd block unchanged")
+else:
+    open(GRD, "w").write(new_g)
+    print("edited grd block (%d includes)" % len(manifest["lists"]))
 
 # --- provider -----------------------------------------------------------------------------------------------------
 HEADER = """// Copyright (c) 2026 The Auren Authors. All rights reserved.
