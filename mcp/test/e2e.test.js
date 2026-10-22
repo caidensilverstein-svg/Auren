@@ -9,7 +9,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import Database from 'better-sqlite3';
+import { TokenStore } from '../lib/auth.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
@@ -46,6 +49,23 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>Fixture Page</title>
 <button style="position:absolute;left:-9999px">offscreen-trap</button>
 <button id="zw">ok\u200Bgo\u202Eevil</button>
 </main>`;
+
+
+// Accessible names, shadow DOM, a same-origin iframe, a native dialog, a hover menu, a file input.
+const WIDGETS = `<!doctype html><meta charset="utf-8"><title>Widgets</title><main>
+<a id="slink" href="#sx" title="Search">Search</a> <input id="sbox" type="search" placeholder="Search"> <a id="onlylink" href="#ol" title="Open menu">Open menu</a>
+<label>Email address <input id="em" type="email"></label>
+<label>Plan <select id="pl"><option>Free</option><option>Pro</option></select></label>
+<label><input type="checkbox" id="tos"> I accept the terms</label>
+<div class="item"><span>Red Mug $9</span> <button class="add">Add to cart</button></div>
+<div class="item"><span>Blue Mug $12</span> <button class="add">Add to cart</button></div>
+<x-w></x-w>
+<iframe id="fr" srcdoc="<button id='ib' onclick=&quot;parent.window.framed=(parent.window.framed||0)+1&quot;>Frame button</button>"></iframe>
+<button id="del" onclick="window.answer=confirm('Really delete?')">Delete</button>
+<div id="menu" onmouseenter="window.hov=1;sub.hidden=false" onmouseleave="sub.hidden=true"><span tabindex="0">Products</span><div id="sub" hidden><a href="#" onclick="window.picked=1;return false">Pricing</a></div></div>
+<input type="file" id="file" onchange="window.fname=file.files[0].name">
+</main><script>customElements.define('x-w',class extends HTMLElement{constructor(){super();const r=this.attachShadow({mode:'open'});
+r.innerHTML='<label>Nick <input id="nick"></label><button id="sv">Save nick</button>';r.getElementById('sv').onclick=()=>{window.nick=r.getElementById('nick').value}}})</script>`;
 
 let chrome, fixture, mcp, chromeDir, homeDir, ports = {};
 const chromePath = findChrome();
@@ -93,7 +113,7 @@ before(async () => {
   ports = { cdp: await freePort(), mcp: await freePort(), web: await freePort() };
   homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'auren-mcp-home-'));
   chromeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'auren-mcp-chrome-'));
-  fixture = http.createServer((_, res) => { res.setHeader('content-type', 'text/html'); res.end(PAGE); })
+  fixture = http.createServer((req, res) => { res.setHeader('content-type', 'text/html'); res.end(req.url.startsWith('/widgets') ? WIDGETS : PAGE); })
     .listen(ports.web, '127.0.0.1');
   chrome = spawn(chromePath, ['--headless=new', '--no-sandbox', '--disable-gpu', `--user-data-dir=${chromeDir}`,
     `--remote-debugging-port=${ports.cdp}`, `--remote-debugging-address=127.0.0.1`, 'about:blank'], { stdio: 'ignore' });
@@ -395,6 +415,163 @@ test('safety: rate limit stops runaway action loops', { skip }, async () => {
   p.kill('SIGKILL');
   assert.equal(outs.filter(o => /Rate limit/.test(o)).length, 2);
   await c.close().catch(() => {});
+});
+
+test('automation: labelled controls are named, duplicates carry row context, act finds them by label', { skip }, async () => {
+  const c = await connect();
+  await grant(c, 'js_execute');
+  await grant(c, 'fill'); await grant(c, 'click');
+  const snap = await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/widgets` });
+  assert.match(snap, /<inp [^>]*>Email address<\/inp>/);
+  assert.match(snap, /<chk [^>]*>I accept the terms<\/chk>/);
+  assert.match(snap, /<sel [^>]*val="Free"[^>]*opts="Free\|Pro"[^>]*>Plan<\/sel>/);
+  assert.match(snap, /<btn [^>]*ctx="Red Mug \$9"[^>]*>Add to cart<\/btn>/);
+  assert.match(snap, /<btn [^>]*ctx="Blue Mug \$12"[^>]*>Add to cart<\/btn>/);
+  await call(c, 'browser_act', { find: 'Email address', action: 'fill', value: 'ada@example.com' });
+  await call(c, 'browser_act', { find: 'Plan', action: 'fill', value: 'Pro' });          // option text, not value
+  assert.equal(JSON.parse(await call(c, 'browser_execute_js', { code: 'document.getElementById("em").value+"|"+document.getElementById("pl").value' })), 'ada@example.com|Pro');
+  assert.match(await call(c, 'browser_act', { find: 'Plan', action: 'fill', value: 'Enterprise' }), /No option matches/);
+  await c.close();
+});
+
+test('automation: shadow DOM and same-origin iframes are visible and drivable', { skip }, async () => {
+  const c = await connect();
+  await grant(c, 'js_execute');
+  await grant(c, 'fill'); await grant(c, 'click');
+  await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/widgets` });
+  await call(c, 'browser_act', { find: 'Nick', action: 'fill', value: 'ada' });
+  await call(c, 'browser_act', { find: 'Save nick', action: 'click' });
+  await call(c, 'browser_act', { find: 'Frame button', action: 'click' });
+  assert.equal(JSON.parse(await call(c, 'browser_execute_js', { code: 'window.nick+"|"+window.framed' })), 'ada|1');
+  await c.close();
+});
+
+test('automation: a native dialog is reported, not hung on, and browser_dialog answers it', { skip }, async () => {
+  const c = await connect();
+  await grant(c, 'js_execute');
+  await grant(c, 'click');
+  await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/widgets` });
+  const out = await call(c, 'browser_act', { find: 'Delete', action: 'click' });
+  assert.match(out, /<dialog type="confirm" message="Really delete\?"/);
+  assert.match(await call(c, 'browser_snapshot'), /JavaScript dialog is open/);        // other tools say so instead of hanging
+  assert.match(await call(c, 'browser_dialog', { action: 'accept' }), /<dialog_closed type="confirm" action="accept"/);
+  assert.equal(JSON.parse(await call(c, 'browser_execute_js', { code: 'window.answer' })), true);
+  await c.close();
+});
+
+test('automation: hover opens a menu; stale eids after a re-render are relocated', { skip }, async () => {
+  const c = await connect();
+  await grant(c, 'js_execute');
+  await grant(c, 'click');
+  await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/widgets` });
+  assert.doesNotMatch(await call(c, 'browser_snapshot'), /Pricing/);
+  assert.match(await call(c, 'browser_hover', { selector: '#menu span' }), /Pricing/);
+  await call(c, 'browser_act', { find: 'Pricing', action: 'click' });
+  assert.equal(JSON.parse(await call(c, 'browser_execute_js', { code: 'window.picked' })), 1);
+  // re-render: replace the button nodes; the old eid must still reach "Add to cart" in the Blue Mug row
+  const snap = await call(c, 'browser_snapshot');
+  const blue = snap.match(/<btn eid="([^"]+)"[^>]*ctx="Blue Mug \$12"/)[1];
+  await call(c, 'browser_execute_js', { code: 'document.querySelectorAll(".item").forEach(d=>{d.innerHTML=d.innerHTML});document.querySelectorAll(".add").forEach(b=>b.onclick=function(){window.added=(window.added||[]).concat(b.parentElement.firstChild.textContent)})' });
+  await call(c, 'browser_click', { eid: blue });
+  assert.deepEqual(JSON.parse(await call(c, 'browser_execute_js', { code: 'window.added' })), ['Blue Mug $12']);
+  await c.close();
+});
+
+test('automation: file upload needs the file_upload permission, which is denied by default', { skip }, async () => {
+  const c = await connect();
+  await grant(c, 'js_execute');
+  await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/widgets` });
+  const f = path.join(os.tmpdir(), 'auren-e2e-upload.txt'); fs.writeFileSync(f, 'x');
+  assert.match(await call(c, 'browser_upload', { selector: '#file', files: [f] }), /permission|denied|not allowed/i);
+  assert.match(await call(c, 'browser_upload', { selector: '#file', files: ['relative.txt'] }), /permission|denied|absolute/i);
+  await grant(c, 'file_upload');
+  assert.match(await call(c, 'browser_upload', { selector: '#file', files: [f] }), /<uploaded count="1"/);
+  assert.equal(JSON.parse(await call(c, 'browser_execute_js', { code: 'window.fname' })), 'auren-e2e-upload.txt');
+  await c.close();
+});
+
+// ---- agent tokens (docs/design/user-auth.md steps 1-2) ----
+const authDb = () => new Database(path.join(homeDir, '.auren', 'auth.db'));
+async function connectWith(token) {
+  const client = new Client({ name: 'e2e', version: '0' });
+  await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${ports.mcp}/mcp`), { requestInit: { headers: { authorization: `Bearer ${token}` } } }));
+  return client;
+}
+const status = async (token) => (await fetch(`http://127.0.0.1:${ports.mcp}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) })).status;
+
+test('tokens: a read token can look but not act; an act token cannot touch settings', { skip }, async () => {
+  const db = authDb(); const store = new TokenStore(db);
+  const rd = store.mint({ label: 'reader', scope: 'read' }), ac = store.mint({ label: 'actor', scope: 'act' });
+  db.close();
+  const r = await connectWith(rd.token);
+  assert.match(await call(r, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/` }), /scope 'read'.*does not allow browser_navigate/);
+  assert.match(await call(r, 'browser_snapshot'), /<state|<error|<permission_denied>(?!This token)/);     // reading is allowed (the page may be anything)
+  assert.match(await call(r, 'browser_click', { selector: '#b' }), /scope 'read'/);
+  assert.match(await call(r, 'browser_execute_js', { code: '1' }), /scope 'read'/);
+  const a = await connectWith(ac.token);
+  assert.match(await call(a, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/` }), /<state/);
+  assert.match(await call(a, 'browser_click', { selector: '#b' }), /<state|permission/);
+  assert.match(await call(a, 'browser_set_permission', { action: 'fill', level: 'allow', reason: 'x' }), /scope 'act'.*browser_set_permission/);
+  await r.close(); await a.close();
+});
+
+test('tokens: wrong, expired and revoked tokens are a plain 404; revocation is immediate', { skip }, async () => {
+  const db = authDb(); const store = new TokenStore(db);
+  const good = store.mint({ label: 'good', scope: 'read' }), old = store.mint({ label: 'old', scope: 'read' }), gone = store.mint({ label: 'gone', scope: 'read' });
+  db.prepare('UPDATE tokens SET expires_at = ? WHERE id = ?').run(Date.now() - 1000, old.id);
+  assert.equal(await status(good.token), 200);
+  assert.equal(await status(old.token), 404);
+  assert.equal(await status('aur_' + 'x'.repeat(43)), 404);
+  assert.equal(await status(''), 404);
+  assert.equal(await status(gone.token), 200);
+  assert.equal(store.revoke('gone'), 1);
+  assert.equal(await status(gone.token), 404);                  // same token, next request
+  assert.equal(await status(good.token), 200);                  // others unaffected
+  db.close();
+});
+
+test('tokens: tokens and the admin key are not interchangeable; the database holds hashes only', { skip }, async () => {
+  const db = authDb(); const store = new TokenStore(db);
+  const t = store.mint({ label: 'xcheck', scope: 'settings' });
+  assert.equal((await admin('GET', '/permissions', null, t.token)).status, 401);          // agent token on the control plane
+  assert.equal(await status(ADMIN), 404);                                                   // admin secret on /mcp
+  const raw = fs.readFileSync(path.join(homeDir, '.auren', 'auth.db')).toString('latin1');
+  assert.ok(!raw.includes(t.token), 'token secret must not be stored');
+  assert.ok(db.prepare('SELECT 1 FROM tokens WHERE token_hash = ?').get(crypto.createHash('sha256').update(t.token).digest('hex')));
+  db.close();
+});
+
+test('tokens: audit rows name the token, and never contain its secret', { skip }, async () => {
+  const db = authDb(); const store = new TokenStore(db);
+  const t = store.mint({ label: 'audited', scope: 'act' });
+  db.close();
+  const c = await connectWith(t.token);
+  await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/` });
+  await c.close();
+  const log = fs.readFileSync(path.join(homeDir, '.auren', 'audit.log'), 'utf8');
+  const mine = log.split('\n').filter(l => l.includes(`"token":"${t.id}"`));
+  assert.ok(mine.length >= 1, 'audit rows carry the token id');
+  assert.ok(mine.every(l => l.includes('"user":"owner"')));
+  assert.ok(!log.includes(t.token), 'the secret never reaches the audit log');
+});
+
+test('tokens: the legacy key still works (path and bearer) and is logged as legacy', { skip }, async () => {
+  const c = await connect();
+  assert.match(await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/` }), /<state/);
+  await c.close();
+  const log = fs.readFileSync(path.join(homeDir, '.auren', 'audit.log'), 'utf8');
+  assert.ok(log.includes('"token":"legacy"'));
+});
+
+test('automation: "fill Search" targets the text field, not a Search link; filling a link is an explicit error', { skip }, async () => {
+  const c = await connect();
+  await grant(c, 'fill'); await grant(c, 'click'); await grant(c, 'js_execute');
+  await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/widgets` });
+  await call(c, 'browser_act', { find: 'Search', action: 'fill', value: 'turing' });
+  assert.equal(JSON.parse(await call(c, 'browser_execute_js', { code: 'document.getElementById("sbox").value' })), 'turing');
+  const r = await call(c, 'browser_act', { find: 'Open menu', action: 'fill', value: 'x' });
+  assert.match(r, /Cannot fill: .* is a &lt;a&gt; \(&quot;Open menu&quot;\), not a text field/);
+  await c.close();
 });
 
 test('reports a structured offline error when Auren is unreachable', { skip }, async () => {

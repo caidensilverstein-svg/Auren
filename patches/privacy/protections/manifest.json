@@ -1,0 +1,194 @@
+{
+ "fetched": "2026-10-21",
+ "lists": [
+  {
+   "file": "easylist.txt",
+   "kind": "list",
+   "url": "https://easylist.to/easylist/easylist.txt",
+   "title": "EasyList",
+   "license": "GPL-3.0-or-later OR CC-BY-SA-3.0",
+   "bytes": 2218562,
+   "sha256": "85da2a3a111e48b018481813f429b48890acfceb047fafd4e938074d1416d06a"
+  },
+  {
+   "file": "easyprivacy.txt",
+   "kind": "list",
+   "url": "https://easylist.to/easylist/easyprivacy.txt",
+   "title": "EasyPrivacy",
+   "license": "GPL-3.0-or-later OR CC-BY-SA-3.0",
+   "bytes": 1510806,
+   "sha256": "c8e3a8e23e68202b67ff588c351966f21616745d39fc782cd00abd29af960311"
+  },
+  {
+   "file": "easylist-cookie.txt",
+   "kind": "list",
+   "url": "https://secure.fanboy.co.nz/fanboy-cookiemonster.txt",
+   "title": "Fanboy Cookie List",
+   "license": "GPL-3.0-or-later OR CC-BY-3.0",
+   "bytes": 902973,
+   "sha256": "a9f0138427d98ba7f7e7cf8aad93408f8fc427b159de20704e9f259886d9f17e"
+  },
+  {
+   "file": "ublock-filters.txt",
+   "kind": "list",
+   "url": "https://ublockorigin.github.io/uAssetsCDN/filters/filters.min.txt",
+   "title": "uBlock filters",
+   "license": "GPL-3.0-or-later",
+   "bytes": 1934538,
+   "sha256": "76e9848810ae6a5dd5acf4465e1a12b79721884733fe74f6766051cebf482fb5"
+  },
+  {
+   "file": "ublock-privacy.txt",
+   "kind": "list",
+   "url": "https://ublockorigin.github.io/uAssetsCDN/filters/privacy.min.txt",
+   "title": "uBlock filters - Privacy",
+   "license": "GPL-3.0-or-later",
+   "bytes": 139714,
+   "sha256": "da578c3a916eb492d05a0ac2d790f73905531a54b4d645da7b2275d7d23a5bb9"
+  },
+  {
+   "file": "ublock-unbreak.txt",
+   "kind": "list",
+   "url": "https://ublockorigin.github.io/uAssetsCDN/filters/unbreak.min.txt",
+   "title": "uBlock filters - Unbreak",
+   "license": "GPL-3.0-or-later",
+   "bytes": 177935,
+   "sha256": "193eb1e3079ab9811d8a6df6b33245df27e8e20ba37cde3fb3dd6b8a003cf854"
+  },
+  {
+   "file": "ublock-badware.txt",
+   "kind": "list",
+   "url": "https://ublockorigin.github.io/uAssetsCDN/filters/badware.min.txt",
+   "title": "uBlock filters - Badware risks",
+   "license": "GPL-3.0-or-later",
+   "bytes": 167430,
+   "sha256": "99981b410d56d4b27aadcc6ce0a6eeaa33b078bec3d6109c48f58e0e6f520eab"
+  },
+  {
+   "file": "brave-unbreak.txt",
+   "kind": "list",
+   "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-unbreak.txt",
+   "title": "Brave Unbreak",
+   "license": "MPL-2.0",
+   "bytes": 121930,
+   "sha256": "57c08f868a2a886105b2047580fc06ee79f3ded076aca66968da885956812eb0"
+  },
+  {
+   "file": "peterlowe-hosts.txt",
+   "kind": "list",
+   "url": "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=0&mimetype=plaintext",
+   "title": "Peter Lowe's ad server list",
+   "license": "free use",
+   "bytes": 70694,
+   "sha256": "9779ab30f298385af0a58e94c6ffdaa9f6f541f700a1b666a94d8576a1cec43c"
+  },
+  {
+   "file": "brave-specific.txt",
+   "kind": "list",
+   "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-specific.txt",
+   "title": "Brave specific",
+   "license": "MPL-2.0",
+   "bytes": 10831,
+   "sha256": "f2fa61e972136c51b052cf1e832480cbba22adf03c1210eaff5a654b8e0935a1"
+  },
+  {
+   "file": "brave-firstparty.txt",
+   "kind": "list",
+   "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-firstparty.txt",
+   "title": "Brave first-party",
+   "license": "MPL-2.0",
+   "bytes": 220668,
+   "sha256": "5c4b55471c06d7c197c708944ee8d1277905019a93f469a03c9fb710b8bf67cb"
+  },
+  {
+   "file": "brave-firstparty-cname.txt",
+   "kind": "list",
+   "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-firstparty-cname.txt",
+   "title": "Brave first-party CNAME",
+   "license": "MPL-2.0",
+   "bytes": 428475,
+   "sha256": "62686ce875274a636b8e8b40fb05d64ce6f49e9b1ab77099877ba7d140aebac4"
+  },
+  {
+   "file": "brave-social.txt",
+   "kind": "list",
+   "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-social.txt",
+   "title": "Brave social",
+   "license": "MPL-2.0",
+   "bytes": 1272,
+   "sha256": "b4a5abdf0388d3cf118096f370cab84d7578221733d27dd04e4bd52dad41a722"
+  },
+  {
+   "file": "brave-sugarcoat.txt",
+   "kind": "list",
+   "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-sugarcoat.txt",
+   "title": "Brave sugarcoat",
+   "license": "MPL-2.0",
+   "bytes": 385,
+   "sha256": "1fa064de6651638c5235f3f4a57a206869daea92d5ac6f41e787342e17f07127"
+  },
+  {
+   "file": "brave-cookie-specific.txt",
+   "kind": "list",
+   "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-cookie-specific.txt",
+   "title": "Brave cookie specific",
+   "license": "MPL-2.0",
+   "bytes": 24669,
+   "sha256": "bf1c3fa19ed1732a41291b8d1b09cb539f3f12840212c741bbc74984a9beef40"
+  },
+  {
+   "file": "brave-checks.txt",
+   "kind": "list",
+   "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-checks.txt",
+   "title": "Brave checks",
+   "license": "MPL-2.0",
+   "bytes": 4552,
+   "sha256": "ee6361b9c995817cc4ac433c0e25e624672afeb94a4bf34e8cd2dabb69a11ceb"
+  },
+  {
+   "file": "brave-pageview.txt",
+   "kind": "list",
+   "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-pageview.txt",
+   "title": "Brave pageview",
+   "license": "MPL-2.0",
+   "bytes": 4577,
+   "sha256": "52a0b2ad424b24f7233aaca502694ec6078a1c3916586c3c79fa325ab21eabe9"
+  },
+  {
+   "file": "debounce.json",
+   "kind": "data",
+   "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/debounce.json",
+   "title": "Debounce rules (redirect trackers)",
+   "license": "MPL-2.0",
+   "bytes": 12930,
+   "sha256": "fb2396985a78983c8f88ee701100c5cb4681731239ac6624e86da1212645dbf8"
+  },
+  {
+   "file": "clean-urls.json",
+   "kind": "data",
+   "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/clean-urls.json",
+   "title": "Clean URLs (tracking parameters)",
+   "license": "MPL-2.0",
+   "bytes": 30763,
+   "sha256": "c2664e019673f58dbefed33ed32f355dd5c8a781e395059918d87020a9e4dc05"
+  },
+  {
+   "file": "clean-urls-permissions.json",
+   "kind": "data",
+   "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/clean-urls-permissions.json",
+   "title": "Clean URLs permissions",
+   "license": "MPL-2.0",
+   "bytes": 333,
+   "sha256": "ae19d4b67e3268d5739e35d0aade25c9a1389493a3d9d4f01234ff437350ba6b"
+  },
+  {
+   "file": "query-filter.json",
+   "kind": "data",
+   "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/query-filter.json",
+   "title": "Query filter",
+   "license": "MPL-2.0",
+   "bytes": 2416,
+   "sha256": "c16168bb98ea4a615c178a71da6c6e9463114e24a59101c1caef80942735940e"
+  }
+ ]
+}

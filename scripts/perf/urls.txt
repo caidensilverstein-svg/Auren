@@ -1,0 +1,14 @@
+# Fixed page-load list. Real sites: results move with the sites and the network, so compare runs made close in time.
+# Mix of ad/tracker-heavy news, video, shopping and clean pages.
+https://www.cnn.com/
+https://www.theguardian.com/international
+https://www.nytimes.com/
+https://www.bbc.com/news
+https://www.reddit.com/r/technology/
+https://www.imdb.com/
+https://www.wikipedia.org/
+https://news.ycombinator.com/
+https://www.espn.com/
+https://www.ebay.com/
+https://www.cnet.com/
+https://www.forbes.com/

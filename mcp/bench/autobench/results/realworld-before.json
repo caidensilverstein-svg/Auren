@@ -1,0 +1,56 @@
+{
+ "label": "before",
+ "pass": 3,
+ "total": 6,
+ "rows": [
+  {
+   "name": "example.org: follow the \"Learn more\" link to iana.org",
+   "ok": true,
+   "error": null,
+   "calls": 3,
+   "chars": 3110,
+   "ms": 4776
+  },
+  {
+   "name": "wikipedia: search for \"Alan Turing\", open the article",
+   "ok": false,
+   "error": null,
+   "calls": 4,
+   "chars": 12072,
+   "ms": 4139
+  },
+  {
+   "name": "hacker news: open the comments of the first story",
+   "ok": true,
+   "error": null,
+   "calls": 4,
+   "chars": 6824,
+   "ms": 3977
+  },
+  {
+   "name": "github: open microsoft/playwright, go to Issues",
+   "ok": false,
+   "error": null,
+   "calls": 3,
+   "chars": 10302,
+   "ms": 9905
+  },
+  {
+   "name": "mdn: open the Fetch API page, jump to a section link",
+   "ok": true,
+   "error": null,
+   "calls": 2,
+   "chars": 8025,
+   "ms": 4055
+  },
+  {
+   "name": "duckduckgo: type a query into the search box and submit",
+   "ok": false,
+   "error": null,
+   "calls": 4,
+   "chars": 2012,
+   "ms": 7090
+  }
+ ],
+ "when": "2026-10-22T04:12:54.248Z"
+}
