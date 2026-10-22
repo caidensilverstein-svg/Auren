@@ -47,7 +47,7 @@ try { for (const d of fs.readdirSync(AG).sort()) { const e = read(path.join(AG, 
 
 // ---- bench ---------------------------------------------------------------------------------------------------------
 const bb = read(path.join(BN, 'before.json')), ba = read(path.join(BN, 'after.json'));
-const bench = bb && ba && { tasks: ba.results.length, e2e: +arg('--e2e', 0), before: { pass: bb.summary.pass, results: bb.results.map(r => r.status === 'pass' ? 'pass' : 'fail') }, after: { pass: ba.summary.pass, results: ba.results.map(r => r.status === 'pass' ? 'pass' : 'fail') } };
+const bench = bb && ba && { tasks: ba.results.length, e2e: +arg('--e2e', 0), before: { pass: bb.summary.pass, js: bb.summary.js_only, results: bb.results.map(r => r.status === 'pass' ? 'pass' : r.status === 'js-only' ? 'js' : 'fail') }, after: { pass: ba.summary.pass, js: ba.summary.js_only, results: ba.results.map(r => r.status === 'pass' ? 'pass' : r.status === 'js-only' ? 'js' : 'fail') } };
 
 // ---- tokens --------------------------------------------------------------------------------------------------------
 const tf = latest(BN, /^tokens-\d+\.json$/);

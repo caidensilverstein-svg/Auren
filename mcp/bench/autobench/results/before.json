@@ -3,15 +3,15 @@
   "label": "before",
   "tasks": 17,
   "pass": 2,
-  "js_only": 0,
-  "fail": 15,
+  "js_only": 3,
+  "fail": 12,
   "passed_calls": 11,
   "passed_resp_chars": 4971,
   "passed_est_tokens": 1243,
-  "passed_ms": 16233,
+  "passed_ms": 16253,
   "tools": 19,
   "node": "v24.21.0",
-  "when": "2026-10-22T03:17:40.619Z"
+  "when": "2026-10-22T04:07:37.768Z"
  },
  "results": [
   {
@@ -22,7 +22,7 @@
    "error": null,
    "calls": 7,
    "chars": 3355,
-   "ms": 742,
+   "ms": 758,
    "tools": [
     "browser_navigate",
     "browser_act",
@@ -41,8 +41,8 @@
    "ok": false,
    "error": null,
    "calls": 8,
-   "chars": 3034,
-   "ms": 647,
+   "chars": 3035,
+   "ms": 679,
    "tools": [
     "browser_navigate",
     "browser_act",
@@ -63,7 +63,7 @@
    "error": null,
    "calls": 12,
    "chars": 2634,
-   "ms": 2039,
+   "ms": 2062,
    "tools": [
     "browser_navigate",
     "browser_act",
@@ -88,7 +88,7 @@
    "error": null,
    "calls": 13,
    "chars": 6255,
-   "ms": 925,
+   "ms": 920,
    "tools": [
     "browser_navigate",
     "browser_read_section",
@@ -114,7 +114,7 @@
    "error": null,
    "calls": 21,
    "chars": 5423,
-   "ms": 3744,
+   "ms": 3749,
    "tools": [
     "browser_navigate",
     "browser_act",
@@ -143,31 +143,11 @@
   {
    "id": "T06",
    "name": "Shadow DOM: fill and save inside a web component",
-   "status": "FAIL",
+   "status": "js-only",
    "ok": false,
    "error": null,
    "calls": 3,
    "chars": 266,
-   "ms": 406,
-   "tools": [
-    "browser_navigate",
-    "browser_act",
-    "browser_act"
-   ],
-   "js_attempt": {
-    "ok": false,
-    "calls": 1,
-    "error": null
-   }
-  },
-  {
-   "id": "T07",
-   "name": "Iframe (same origin): apply a coupon",
-   "status": "FAIL",
-   "ok": false,
-   "error": null,
-   "calls": 3,
-   "chars": 263,
    "ms": 410,
    "tools": [
     "browser_navigate",
@@ -175,8 +155,28 @@
     "browser_act"
    ],
    "js_attempt": {
-    "ok": false,
-    "calls": 1,
+    "ok": true,
+    "calls": 2,
+    "error": null
+   }
+  },
+  {
+   "id": "T07",
+   "name": "Iframe (same origin): apply a coupon",
+   "status": "js-only",
+   "ok": false,
+   "error": null,
+   "calls": 3,
+   "chars": 263,
+   "ms": 406,
+   "tools": [
+    "browser_navigate",
+    "browser_act",
+    "browser_act"
+   ],
+   "js_attempt": {
+    "ok": true,
+    "calls": 2,
     "error": null
    }
   },
@@ -188,7 +188,7 @@
    "error": null,
    "calls": 2,
    "chars": 205,
-   "ms": 423,
+   "ms": 426,
    "tools": [
     "browser_navigate",
     "browser_act"
@@ -200,13 +200,12 @@
    "name": "Overlays: dismiss cookie banner, confirm a native dialog",
    "status": "FAIL",
    "ok": false,
-   "error": null,
-   "calls": 3,
-   "chars": 782,
-   "ms": 531,
+   "error": "timeout 20000ms: browser_act",
+   "calls": 2,
+   "chars": 542,
+   "ms": 20208,
    "tools": [
     "browser_navigate",
-    "browser_act",
     "browser_act"
    ],
    "js_attempt": null
@@ -216,14 +215,21 @@
    "name": "Feed: scroll an infinite list to Post 47 and open it",
    "status": "FAIL",
    "ok": false,
-   "error": "Cannot read properties of undefined (reading 'eid')",
-   "calls": 3,
-   "chars": 4102,
-   "ms": 169,
+   "error": null,
+   "calls": 10,
+   "chars": 12409,
+   "ms": 15585,
    "tools": [
     "browser_navigate",
     "browser_scroll",
-    "browser_find"
+    "browser_find",
+    "browser_scroll",
+    "browser_find",
+    "browser_scroll",
+    "browser_find",
+    "browser_scroll",
+    "browser_find",
+    "browser_click"
    ],
    "js_attempt": null
   },
@@ -235,7 +241,7 @@
    "error": null,
    "calls": 4,
    "chars": 1616,
-   "ms": 15491,
+   "ms": 15495,
    "tools": [
     "browser_navigate",
     "browser_act",
@@ -252,7 +258,7 @@
    "error": "Cannot read properties of undefined (reading 'id')",
    "calls": 4,
    "chars": 735,
-   "ms": 617,
+   "ms": 621,
    "tools": [
     "browser_navigate",
     "browser_get_tabs",
@@ -264,20 +270,20 @@
   {
    "id": "T13",
    "name": "Hover menu: open a submenu and choose Pricing",
-   "status": "FAIL",
+   "status": "js-only",
    "ok": false,
    "error": null,
    "calls": 3,
    "chars": 662,
-   "ms": 15442,
+   "ms": 15465,
    "tools": [
     "browser_navigate",
     "browser_act",
     "browser_act"
    ],
    "js_attempt": {
-    "ok": false,
-    "calls": 1,
+    "ok": true,
+    "calls": 2,
     "error": null
    }
   },
@@ -289,7 +295,7 @@
    "error": null,
    "calls": 3,
    "chars": 893,
-   "ms": 521,
+   "ms": 523,
    "tools": [
     "browser_navigate",
     "browser_act",
@@ -305,7 +311,7 @@
    "error": null,
    "calls": 2,
    "chars": 356,
-   "ms": 393,
+   "ms": 395,
    "tools": [
     "browser_navigate",
     "browser_act"
@@ -320,7 +326,7 @@
    "error": null,
    "calls": 2,
    "chars": 356,
-   "ms": 380,
+   "ms": 374,
    "tools": [
     "browser_navigate",
     "browser_act"
@@ -335,7 +341,7 @@
    "error": null,
    "calls": 3,
    "chars": 852,
-   "ms": 441,
+   "ms": 466,
    "tools": [
     "browser_navigate",
     "browser_snapshot",

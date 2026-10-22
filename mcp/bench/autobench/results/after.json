@@ -5,13 +5,13 @@
   "pass": 17,
   "js_only": 0,
   "fail": 0,
-  "passed_calls": 98,
-  "passed_resp_chars": 45673,
-  "passed_est_tokens": 11418,
-  "passed_ms": 13702,
+  "passed_calls": 100,
+  "passed_resp_chars": 46644,
+  "passed_est_tokens": 11661,
+  "passed_ms": 13948,
   "tools": 22,
   "node": "v24.21.0",
-  "when": "2026-10-22T03:29:14.940Z"
+  "when": "2026-10-22T04:13:51.007Z"
  },
  "results": [
   {
@@ -22,7 +22,7 @@
    "error": null,
    "calls": 7,
    "chars": 3526,
-   "ms": 790,
+   "ms": 805,
    "tools": [
     "browser_navigate",
     "browser_act",
@@ -42,7 +42,7 @@
    "error": null,
    "calls": 8,
    "chars": 4479,
-   "ms": 819,
+   "ms": 827,
    "tools": [
     "browser_navigate",
     "browser_act",
@@ -63,7 +63,7 @@
    "error": null,
    "calls": 7,
    "chars": 1723,
-   "ms": 837,
+   "ms": 805,
    "tools": [
     "browser_navigate",
     "browser_act",
@@ -83,7 +83,7 @@
    "error": null,
    "calls": 13,
    "chars": 6973,
-   "ms": 1016,
+   "ms": 1031,
    "tools": [
     "browser_navigate",
     "browser_read_section",
@@ -109,7 +109,7 @@
    "error": null,
    "calls": 14,
    "chars": 4363,
-   "ms": 1650,
+   "ms": 1671,
    "tools": [
     "browser_navigate",
     "browser_act",
@@ -136,7 +136,7 @@
    "error": null,
    "calls": 3,
    "chars": 805,
-   "ms": 512,
+   "ms": 516,
    "tools": [
     "browser_navigate",
     "browser_act",
@@ -152,7 +152,7 @@
    "error": null,
    "calls": 3,
    "chars": 1024,
-   "ms": 574,
+   "ms": 565,
    "tools": [
     "browser_navigate",
     "browser_act",
@@ -168,7 +168,7 @@
    "error": null,
    "calls": 2,
    "chars": 672,
-   "ms": 508,
+   "ms": 518,
    "tools": [
     "browser_navigate",
     "browser_act"
@@ -183,7 +183,7 @@
    "error": null,
    "calls": 4,
    "chars": 934,
-   "ms": 534,
+   "ms": 551,
    "tools": [
     "browser_navigate",
     "browser_act",
@@ -198,11 +198,13 @@
    "status": "pass",
    "ok": true,
    "error": null,
-   "calls": 8,
-   "chars": 11754,
-   "ms": 626,
+   "calls": 10,
+   "chars": 12725,
+   "ms": 720,
    "tools": [
     "browser_navigate",
+    "browser_scroll",
+    "browser_find",
     "browser_scroll",
     "browser_find",
     "browser_scroll",
@@ -221,7 +223,7 @@
    "error": null,
    "calls": 7,
    "chars": 2521,
-   "ms": 1390,
+   "ms": 1377,
    "tools": [
     "browser_navigate",
     "browser_act",
@@ -241,7 +243,7 @@
    "error": null,
    "calls": 9,
    "chars": 1986,
-   "ms": 1893,
+   "ms": 1964,
    "tools": [
     "browser_navigate",
     "browser_get_tabs",
@@ -263,7 +265,7 @@
    "error": null,
    "calls": 3,
    "chars": 1307,
-   "ms": 555,
+   "ms": 565,
    "tools": [
     "browser_navigate",
     "browser_hover",
@@ -279,7 +281,7 @@
    "error": null,
    "calls": 3,
    "chars": 1222,
-   "ms": 536,
+   "ms": 548,
    "tools": [
     "browser_navigate",
     "browser_act",
@@ -295,7 +297,7 @@
    "error": null,
    "calls": 2,
    "chars": 770,
-   "ms": 445,
+   "ms": 448,
    "tools": [
     "browser_navigate",
     "browser_act"
@@ -325,7 +327,7 @@
    "error": null,
    "calls": 3,
    "chars": 782,
-   "ms": 571,
+   "ms": 591,
    "tools": [
     "browser_navigate",
     "browser_snapshot",

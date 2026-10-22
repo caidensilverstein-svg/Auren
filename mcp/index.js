@@ -858,6 +858,7 @@ async function actFill(client, target, raw, value, snap = null) {
       const nm=((el.getAttribute('name')||'')+' '+(el.id||'')).toLowerCase();
       const sensitive=ty==='password'||/^(cc-|one-time-code|new-password|current-password)/.test(ac)||/(card.?num|cvv|cvc|ssn|social.?sec)/.test(nm);
       if(sensitive&&!${allowSensitive})return JSON.stringify({sensitive:true,url:location.href});
+      if(!__L.fillable(el))return JSON.stringify({notFillable:true,tag:el.tagName.toLowerCase(),name:__L.name(el),url:location.href});
       el.focus();
       const want=${JSON.stringify(value)};
       if(el.tagName==='SELECT'){
@@ -882,6 +883,7 @@ async function actFill(client, target, raw, value, snap = null) {
   const fr = JSON.parse(r?.result?.value || '{}');
   { const b = fr.url ? domainBlocks(fr.url, 'write') : null; if (b) return { denied: b }; }
   if (fr.sensitive) return { denied: { reason: "This is a password / payment / one-time-code field; agent input there is blocked. The user can allow it with 'auren-perm set sensitive_input allow'." } };
+  if (fr.notFillable) return { error: `Cannot fill: ${raw} is a <${fr.tag}> ("${fr.name}"), not a text field. Click it first if it opens a search box, or use browser_find with a CSS selector such as input[type=search].` };
   if (fr.noOption) return { error: `No option matches '${value}'. Options: ${fr.options.join(' | ')}` };
   // fill never navigates by itself, so no navigation watch is needed
   return afterAction(client, target, { navW: { fired: false, cancel() {} }, loadW: { promise: Promise.resolve(true), cancel() {} }, cancel() {} }, snap, 30, 150);
@@ -1042,16 +1044,16 @@ function buildServer(auth = LEGACY_AUTH) {
   });
   // Resolve a text/CSS query on the page with the shared library (accessible names, shadow DOM, iframes) and mark the
   // hits with eids. interactiveOnly=false also matches plain text elements (used for reads and as a click fallback).
-  const resolveJs = (q, limit, interactiveOnly) => `(function(){${PAGE_LIB}
+  const resolveJs = (q, limit, interactiveOnly, intent) => `(function(){${PAGE_LIB}
     let n=${eidCounter};
-    const hits=__L.resolve(${JSON.stringify(q)},${limit},${interactiveOnly});
+    const hits=__L.resolve(${JSON.stringify(q)},${limit},${interactiveOnly},${JSON.stringify(intent || null)});
     const items=hits.map(h=>{const it=__L.info(h.el);const eid=it.kind+'-'+(++n);h.el.setAttribute('data-eid',eid);it.attrs.eid=eid;it.score=h.score;const c=__L.context(h.el,it.text);if(c)it.attrs.ctx=c;return it;});
     return JSON.stringify({items,nextN:n,tie:hits.length>1&&hits[1].score===hits[0].score});
   })()`;
-  async function resolveQuery(client, target, q, limit, interactiveOnly) {
+  async function resolveQuery(client, target, q, limit, interactiveOnly, intent) {
     const session = sessionOf(target), state = getTabState(target.id);
     const run = async (inter, sid) => {
-      const params = { expression: resolveJs(q, limit, inter), returnByValue: true };
+      const params = { expression: resolveJs(q, limit, inter, intent), returnByValue: true };
       const r = sid ? await client.send('Runtime.evaluate', params, sid).catch(() => null) : await client.Runtime.evaluate(params);
       const f = JSON.parse(r?.result?.value || '{"items":[]}');
       if (typeof f.nextN === 'number') eidCounter = f.nextN;
@@ -1091,7 +1093,7 @@ function buildServer(auth = LEGACY_AUTH) {
         if (!perm.allowed) return { content: [{ type: 'text', text: `<permission_denied>${perm.reason}</permission_denied>` }] };
       }
       return await withCDP(tab_id, async (client, target) => {
-        const found = await resolveQuery(client, target, find, 3, action !== 'read');
+        const found = await resolveQuery(client, target, find, 3, action !== 'read', action);
         if (!found.items.length) return { content: [{ type: 'text', text: `<error>browser_act: element not found: ${escapeXml(find)}</error>` }] };
         const top = found.items[0].attrs.eid;
         const note = ambiguityNote(find, found);

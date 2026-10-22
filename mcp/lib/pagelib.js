@@ -189,7 +189,15 @@ export function pageLib() {
   }
 
   // Scored text resolver. interactiveOnly=false also matches plain text elements (for reads).
-  function resolve(q, limit, interactiveOnly) {
+  // What a person can type into: text-like inputs, textareas, selects, contenteditable, textbox-like roles.
+  function fillable(el) {
+    const t = el.tagName.toLowerCase(), r = (el.getAttribute('role') || '').toLowerCase(), ty = (el.type || '').toLowerCase();
+    if (t === 'textarea' || t === 'select') return true;
+    if (t === 'input') return !/^(button|submit|reset|image|checkbox|radio|file|hidden)$/.test(ty);
+    return el.isContentEditable || /^(textbox|searchbox|combobox|slider|spinbutton)$/.test(r);
+  }
+  // intent 'fill': text fields rank first (a "Search" link is not what "fill Search" means); 'click': text fields rank last.
+  function resolve(q, limit, interactiveOnly, intent) {
     if (CSSY(q)) { try { const r = deepQuery(q, limit).filter(vis); if (r.length) return r.map(el => ({ el, score: 100 })); } catch (e) { /* not css */ } }
     const needle = norm(q).toLowerCase();
     const els = all();
@@ -216,11 +224,13 @@ export function pageLib() {
       deepest.sort((a, b) => b.score - a.score);
       return deepest.slice(0, limit);
     }
+    if (intent === 'fill') for (const h of hits) h.score += fillable(h.el) ? 1000 : 0;
+    else if (intent === 'click') for (const h of hits) h.score -= fillable(h.el) && h.el.tagName.toLowerCase() !== 'select' ? 5 : 0;
     hits.sort((a, b) => b.score - a.score);   // stable: ties keep document order
     return hits.slice(0, limit);
   }
 
-  return { norm, cut, vis, name, kind, info, context, center, all, byEid, clearEids, deepQuery, resolve, textOf, parentOf, relocate,
+  return { norm, cut, vis, name, kind, info, context, center, all, byEid, clearEids, deepQuery, resolve, textOf, parentOf, relocate, fillable,
     INTERACTIVE, FULL, OUTLINE, CSSY };
 }
 

@@ -43,7 +43,10 @@ async function attempt(task, useJs) {
   const t0 = performance.now();
   let error = null;
   try {
-    await withTimeout(useJs ? task.js(makeA()) : task.run(makeA()), 60000, 'task');
+    const A = makeA();
+    // the JS fallback is what an agent tries after the tools failed: it starts from the same page, so load it first
+    if (useJs) await A.go(A.url(task.site));
+    await withTimeout(useJs ? task.js(A) : task.run(A), 60000, 'task');
     await new Promise(r => setTimeout(r, 250));           // let the page's final report reach the server
   } catch (e) { error = String(e.message || e).slice(0, 160); }
   const state = await H.state();

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Count vendor (Brave / Google / BAT) service hosts that are still present as literal strings in a built app.
 
-usage: zero_brave.py /path/to/Auren.app [--json out.json] [--baseline before.json] [--top 40]
+usage: zero_brave.py PATH [PATH ...] [--json out.json] [--baseline before.json] [--top 40]
+       (a PATH is the .app, a directory, or files such as out/auren/*.dylib: a component build keeps its code outside the .app)
 
 A host string in a binary is not proof the browser can reach it (that is what the network firewall in
 patches/privacy/0001-network-firewall.patch and the netlog audit in scripts/telemetry-audit decide); this scanner
@@ -45,7 +46,7 @@ def scan_file(path, vendor, invalid):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("app")
+    ap.add_argument("paths", nargs="+")
     ap.add_argument("--json")
     ap.add_argument("--baseline")
     ap.add_argument("--top", type=int, default=40)
@@ -53,13 +54,18 @@ def main():
 
     vendor, invalid = defaultdict(lambda: defaultdict(int)), defaultdict(lambda: defaultdict(int))
     nfiles = 0
-    for d, _dirs, files in os.walk(a.app, followlinks=False):
-        for n in files:
-            p = os.path.join(d, n)
-            if os.path.islink(p) or not os.path.isfile(p):
-                continue
+    for root in a.paths:
+        if os.path.isfile(root) and not os.path.islink(root):
             nfiles += 1
-            scan_file(p, vendor, invalid)
+            scan_file(root, vendor, invalid)
+            continue
+        for d, _dirs, files in os.walk(root, followlinks=False):
+            for n in files:
+                p = os.path.join(d, n)
+                if os.path.islink(p) or not os.path.isfile(p):
+                    continue
+                nfiles += 1
+                scan_file(p, vendor, invalid)
 
     def total(h):
         return sum(h.values())
@@ -68,7 +74,7 @@ def main():
         fam = next(v.replace("\\", "") for v in VENDOR if re.search(v + "$", host))
         by_family[fam] += 1
     report = {
-        "app": a.app, "files_scanned": nfiles,
+        "paths": a.paths, "files_scanned": nfiles,
         "vendor_hosts": {h: {"occurrences": total(f), "files": len(f)} for h, f in sorted(vendor.items())},
         "invalid_hosts": {h: {"occurrences": total(f), "files": len(f)} for h, f in sorted(invalid.items())},
         "distinct_vendor_hosts": len(vendor), "distinct_invalid_hosts": len(invalid),
@@ -78,7 +84,7 @@ def main():
         with open(a.json, "w") as f:
             json.dump(report, f, indent=1, sort_keys=True)
 
-    print(f"scanned {nfiles} files in {a.app}")
+    print(f"scanned {nfiles} files in {len(a.paths)} path(s)")
     print(f"distinct vendor host strings: {len(vendor)}   (compiled-to-.invalid hosts: {len(invalid)})")
     for fam, n in report["vendor_hosts_by_family"].items():
         print(f"  {fam:28s} {n}")

@@ -53,6 +53,7 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>Fixture Page</title>
 
 // Accessible names, shadow DOM, a same-origin iframe, a native dialog, a hover menu, a file input.
 const WIDGETS = `<!doctype html><meta charset="utf-8"><title>Widgets</title><main>
+<a id="slink" href="#sx" title="Search">Search</a> <input id="sbox" type="search" placeholder="Search"> <a id="onlylink" href="#ol" title="Open menu">Open menu</a>
 <label>Email address <input id="em" type="email"></label>
 <label>Plan <select id="pl"><option>Free</option><option>Pro</option></select></label>
 <label><input type="checkbox" id="tos"> I accept the terms</label>
@@ -560,6 +561,17 @@ test('tokens: the legacy key still works (path and bearer) and is logged as lega
   await c.close();
   const log = fs.readFileSync(path.join(homeDir, '.auren', 'audit.log'), 'utf8');
   assert.ok(log.includes('"token":"legacy"'));
+});
+
+test('automation: "fill Search" targets the text field, not a Search link; filling a link is an explicit error', { skip }, async () => {
+  const c = await connect();
+  await grant(c, 'fill'); await grant(c, 'click'); await grant(c, 'js_execute');
+  await call(c, 'browser_navigate', { url: `http://127.0.0.1:${ports.web}/widgets` });
+  await call(c, 'browser_act', { find: 'Search', action: 'fill', value: 'turing' });
+  assert.equal(JSON.parse(await call(c, 'browser_execute_js', { code: 'document.getElementById("sbox").value' })), 'turing');
+  const r = await call(c, 'browser_act', { find: 'Open menu', action: 'fill', value: 'x' });
+  assert.match(r, /Cannot fill: .* is a &lt;a&gt; \(&quot;Open menu&quot;\), not a text field/);
+  await c.close();
 });
 
 test('reports a structured offline error when Auren is unreachable', { skip }, async () => {
