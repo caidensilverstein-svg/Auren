@@ -79,7 +79,11 @@ edit('''    LOG(WARNING) << "AUREN_FIREWALL: blocked browser-process request to 
         resource_request.headers.GetHeader("X-Goog-Update-AppId");
     LOG(WARNING) << "AUREN_FIREWALL: blocked browser-process request to "
                  << resource_request.url.host()
-                 << resource_request.url.path_piece()
+                 << resource_request.url.path()
                  << (auren_app_id ? " app-id=" + *auren_app_id : "");''',
      marker="auren_app_id")
+# GURL has path(), not path_piece(): repair a tree patched by an earlier version of this script
+if "url.path_piece()" in s:
+    s = s.replace("url.path_piece()", "url.path()")
+    print("edited path_piece -> path")
 open(p, "w").write(s)

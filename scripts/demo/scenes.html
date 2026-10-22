@@ -69,7 +69,7 @@ scene('netlog', 13000, t => {
     <div class="abs" style="left:48px;top:44px"><div class="tag">Network</div><div class="h2" style="margin-top:6px">Zero Brave on the wire</div></div>
     ${col(48, 'Before hardening', D.before.minutes, before, `${D.before.unexpected} Brave hosts`, '#e0675a', 300)}
     ${col(672, 'After hardening', D.after.minutes, after, `${D.after.unexpected} unexpected hosts`, 'var(--green)', 5200)}
-    <div class="abs sub" style="left:48px;right:48px;top:604px;opacity:${ease((t - 9000) / 800)}">Both are 15-minute idle captures on a fresh profile; the audit exits 0 on the second. A blocked request never reaches the netlog, so the firewall log is the other half: ${(DATA.firewall && DATA.firewall.attempts_blocked.length) ? DATA.firewall.attempts_blocked.length + ' browser-process attempts (google.com, update.googleapis.com, cdn.search.brave.com) were caught while settings pages opened' : 'no browser-process attempts were logged at idle'}.</div>`,
+    <div class="abs sub" style="left:48px;right:48px;top:596px;font-size:19px;opacity:${ease((t - 9000) / 800)}">Both captures: 15 minutes, fresh profile. A blocked request never reaches the netlog, so the firewall log is the other half: ${(DATA.firewall && DATA.firewall.attempts_blocked.length) ? DATA.firewall.attempts_blocked.length + ' browser-process attempts were caught and blocked' : 'no browser-process attempts at idle'}.</div>`,
     t, d, 'scripts/telemetry-audit/netlog_audit.py', 'measured ' + D.when);
 });
 

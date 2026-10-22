@@ -34,12 +34,19 @@ await c.send('Page.navigate', { url: 'https://check.torproject.org/' }); await s
 const control = await fetchIp(c);
 log('normal window (control)', control);
 
-// the new-tab page hosts the Tor button; open one if the first tab is something else
-let ntp = before.find(t => /^chrome:\/\/newtab|^chrome-search:/.test(t.url));
-let nc = c;
-if (!ntp) { await c.send('Page.navigate', { url: 'chrome://newtab' }); await sleep(3000); ntp = (await list()).find(t => t.id === normal.id); }
+// The new-tab page hosts the Tor button. Open a fresh one (a WebUI page only gets chrome.send once it has loaded) and wait for the
+// bridge to exist before pressing the button. `known` is taken after the new-tab page exists, so it is not mistaken for the Tor window.
+const bw = await browserWsUrl(hp);
+const browser = await CDP.connect(bw.ws);
+const { targetId: ntpId } = await browser.send('Target.createTarget', { url: 'chrome://newtab' });
+await sleep(3000);
+const ntpTab = (await list()).find(t => t.id === ntpId);
+const nc = await connect(ntpTab);
+let bridge = false;
+for (let i = 0; i < 40 && !bridge; i++) { bridge = await evalIn(nc, `typeof chrome !== 'undefined' && typeof chrome.send === 'function'`).catch(() => false); if (!bridge) await sleep(500); }
+log('new tab page bridge', { chrome_send_available: bridge, url: ntpTab.url });
 const known = new Set((await list()).map(t => t.id));
-const opened = await evalIn(nc, `(() => { try { chrome.send('openTor'); return 'sent'; } catch (e) { return 'chrome.send failed: ' + e.message; } })()`);
+const opened = bridge ? await evalIn(nc, `(() => { try { chrome.send('openTor'); return 'sent'; } catch (e) { return 'chrome.send failed: ' + e.message; } })()`) : 'no chrome.send on the new tab page';
 log('open Tor window', { result: opened });
 
 let torTab = null; const t0 = Date.now();
@@ -49,9 +56,17 @@ log('Tor window appeared', { appeared: !!torTab, seconds: Math.round((Date.now()
 if (torTab) {
   const tc = await connect(torTab);
   let ans = null; const b0 = Date.now();
-  for (let i = 0; i < waitS / 5 && !(ans && ans.IsTor !== undefined); i++) {
-    await tc.send('Page.navigate', { url: 'https://check.torproject.org/' }).catch(() => {}); await sleep(5000);
+  // Navigate once and wait for the page to really be check.torproject.org: before Tor has bootstrapped the navigation just pends, and a
+  // fetch run from the still-visible new-tab WebUI page is blocked by its CSP (which says nothing about Tor). Re-issue the navigation
+  // every 30 s in case the first attempt failed on a circuit that was not ready.
+  let lastNav = 0;
+  while (Date.now() - b0 < waitS * 1000) {
+    if (Date.now() - lastNav > 30000) { await tc.send('Page.navigate', { url: 'https://check.torproject.org/' }).catch(() => {}); lastNav = Date.now(); }
+    await sleep(3000);
+    const href = await evalIn(tc, 'location.href', 8000).catch(() => '');
+    if (!/^https:\/\/check\.torproject\.org/.test(href)) continue;
     ans = await fetchIp(tc);
+    if (ans && ans.IsTor !== undefined) break;
   }
   log('Tor window: check.torproject.org', { ...ans, seconds_to_answer: Math.round((Date.now() - b0) / 1000) });
   out.isTor = ans?.IsTor === true;
