@@ -97,7 +97,11 @@ const zero_brave = zbj && { distinct: zbj.distinct_vendor_hosts, invalid: zbj.di
 const txt = f => { try { return fs.readFileSync(path.join(R, f), 'utf8'); } catch { return null; } };
 const hostsOf = f => (txt(f) || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => { const m = l.match(/^(\d+)\s+AUREN_FIREWALL(?:_STRICT)?:\s*(.*)$/); return m ? { n: +m[1], what: m[2].replace(/^blocked browser-process request to /, '').replace(/^would block /, 'strict: ') } : null; }).filter(Boolean);
 const firewall = { attempts_blocked: hostsOf('mac/strict/strict-test-hosts.txt'), strict_env: hostsOf('mac/strict/strict2-hosts.txt') };
-const tor = read(path.join(R, 'mac/tor-smoke.json'));
+const torRaw = read(path.join(R, 'mac/tor-smoke.json'));
+const torStep = name => torRaw?.steps?.find(x => x.name.startsWith(name));
+const tor = torRaw && { isTor: torRaw.isTor === true, control_isTor: torRaw.control_isTor === true, ip_differs: torRaw.ip_differs === true,
+  control_ip: torStep('normal window')?.IP ?? null, tor_ip: torStep('Tor window: check')?.IP ?? null, seconds: torStep('Tor window: check')?.seconds_to_answer ?? null,
+  circuit: torStep('chrome://tor-circuit')?.text ?? '' };
 const utTxt = txt('mac/ut-tor.txt');
 const unit = utTxt && { passed: +(utTxt.match(/\[  PASSED  \] (\d+) test/)?.[1] ?? 0), failed: +(utTxt.match(/(\d+) FAILED TEST/)?.[1] ?? 0), ran: +(utTxt.match(/\[==========\] (\d+) tests? from/)?.[1] ?? 0) };
 const n2 = read(path.join(R, 'mac/audit-N2-idle15.json'));

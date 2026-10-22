@@ -51,19 +51,19 @@ Caveat: `dcheck_always_on=true` in this build; the firewall completes the loader
 (no DCHECK paths), and Chromium callers already handle `ERR_BLOCKED_BY_CLIENT`.
 
 ## Status
-* Pushed: all scripts, `patches/privacy/args.gn.privacy`, docs, baseline data.
-* **BLOCKER (2026-10-20 ~09:55 EDT): the Mac node went `down` in `get_scos_health`
-  (wg=false, cf=false) while the Mac-tree edits were being committed.** Consequences:
-  - The edits listed in section D/E/B/C were applied to the working tree (they were
-    written and diffed successfully) but the `[Auren]` commits in `brave/` and `src/`
-    and the export of `patches/privacy/*.patch` could not be confirmed; the `out/auren/args.gn`
-    already contains the privacy block (backup in `~/auren-audit/backup/`), `gn gen` passed.
-  - **The rebuild and after-hardening capture have NOT been run.** Nothing in section
-    "patched" of 02 is verified at runtime yet.
-* Next steps once the Mac is back: (1) `git -C ~/brave-src/src/brave status` and commit the
-  listed files (message prefix `[Auren]`), same for `services/network/url_loader_factory.cc`
-  in `~/brave-src/src`; (2) `autoninja -C out/auren chrome` (about 463 steps expected);
-  (3) `run_capture.sh after-idle 900 --fresh`, `after-ui` with `UI_SCENARIO=1`,
-  `after-pages` with SCENARIO_URLS, `WEBUI_SCAN=1`; run `netlog_audit.py` (must exit 0 with
-  claude.ai + chosen hosts allowlisted) and `compare_runs.py before=... after=...`;
-  (4) confirm CDP on 9224, side panel loads claude.ai, NTP bar renders icons.
+
+* **2026-10-22: built and measured on the Mac** (dev build, `out/auren`). The earlier blocker (Mac offline) is gone.
+  * Clean idle capture, fresh profile, one browser: `netlog_audit.py` exits 0; the only host contacted is `chrome.cloudflare-dns.com`
+    (DNS-over-HTTPS, allow-listed). The unhardened 15-minute capture contacted `go-updater.brave.com` (13 requests),
+    `safebrowsing.brave.com`, `usage-ping.brave.com` and `variations.brave.com`.
+  * **A blocked request never reaches the netlog**, so a clean netlog is the source-level gating plus the firewall together. The firewall
+    log (`AUREN_FIREWALL: blocked browser-process request to ...`) is the other half: opening the search-engine settings page and a fresh
+    profile's startup produced three attempts, all blocked: `www.google.com`, `cdn.search.brave.com` and `update.googleapis.com`
+    (the source of the last one is not identified; the log now carries the request path and Google update app id to find it).
+  * The firewall's documented escape hatch (`--auren-allow-service-requests`) never worked from the command line: the network service is a
+    separate process and does not receive custom switches. `patches/privacy/apply_firewall_strict.py` makes it (and a new opt-in strict
+    mode) also read `AUREN_ALLOW_SERVICE_REQUESTS` / `AUREN_FIREWALL_STRICT` from the environment, which child processes inherit.
+  * The protection data the hardening had silently removed (filter lists, debounce, URL cleaning) is restored from inside the app: see `docs/privacy/protections.md`.
+  * Compiled-in vendor surface is not removed: `scripts/privacy/zero_brave.py` still finds hundreds of vendor host strings in the build
+    (mostly in disabled features and help links); they are unreachable at run time (compiled to `.invalid`, firewalled), not deleted.
+* Still open: UI-scenario and page-scenario captures (`after-ui`, `after-pages`), `WEBUI_SCAN`, side-panel claude.ai check.

@@ -154,6 +154,23 @@ scene('agent', () => agentTimeline().total, t => {
     t, total, 'mcp/bench/autobench', '17 tasks, success checked server-side');
 });
 
+
+// 4b Tor --------------------------------------------------------------------------------------------------------------
+scene('tor', () => (DATA.tor ? 9000 : 0), t => {
+  const R = DATA.tor, d = 9000; if (!R) return '';
+  const box = (title, tone, ip, yes, k) => `<div class="card abs" style="left:${k ? 672 : 48}px;top:150px;width:560px;height:250px;padding:26px 30px;opacity:${ease((t - (k ? 1800 : 400)) / 600)}">
+    <div class="tag" style="color:${tone}">${title}</div>
+    <div style="margin-top:18px;font-size:46px;font-weight:700;color:${tone}">${yes ? 'IsTor: true' : 'IsTor: false'}</div>
+    <div class="mono mut" style="margin-top:10px;font-size:20px">exit address ${esc(ip || 'unknown')}</div></div>`;
+  return frame(`
+    <div class="abs" style="left:48px;top:44px"><div class="tag">Tor</div><div class="h2" style="margin-top:6px">The bundled Tor client, on this Mac</div></div>
+    ${box('Normal window', 'var(--mut)', R.control_ip, R.control_isTor, 0)}
+    ${box('Tor window (button on the new tab page)', R.isTor ? 'var(--green)' : '#e0675a', R.tor_ip, R.isTor, 1)}
+    <div class="abs sub" style="left:48px;top:430px;width:1184px;opacity:${ease((t - 3600) / 800)}">Both asked <span class="mono">check.torproject.org/api/ip</span>. ${R.ip_differs ? 'The addresses differ.' : 'The addresses did not differ.'} ${R.seconds != null ? `The Tor window answered ${R.seconds} s after it opened.` : ''}</div>
+    <div class="abs card mono" style="left:48px;top:500px;width:1184px;padding:14px 22px;font-size:15px;color:var(--mut);opacity:${ease((t - 5200) / 800)}">chrome://tor-circuit &rarr; ${esc((R.circuit || '(no text read)').slice(0, 170))}</div>`,
+    t, d, 'scripts/tor/tor_smoke.js', 'Tor Project expert bundle 15.0.25, tor 0.4.9.14');
+});
+
 // 5 bench -----------------------------------------------------------------------------------------------------------
 scene('bench', 12000, t => {
   const B = DATA.bench, d = 12000;
